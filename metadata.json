@@ -1,0 +1,7 @@
+{
+  "name": "JIIM",
+  "description": "Minimalist, classy workout tracker with natural language session logging, progressive overload volume analytics, and JIIM AI split intelligence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
