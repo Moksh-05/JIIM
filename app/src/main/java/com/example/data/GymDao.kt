@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import com.example.model.BodyWeightLog
 import com.example.model.ExerciseLog
 import com.example.model.ExercisePr
 import com.example.model.RoutineTemplate
@@ -84,4 +85,16 @@ interface RoutineDao {
 
   @Query("DELETE FROM routine_templates WHERE id = :id")
   suspend fun deleteRoutine(id: Long)
+}
+
+@Dao
+interface BodyWeightDao {
+  @Query("SELECT * FROM body_weight_logs ORDER BY dateMillis ASC")
+  fun getAllBodyWeights(): Flow<List<BodyWeightLog>>
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertBodyWeight(log: BodyWeightLog): Long
+
+  @Query("DELETE FROM body_weight_logs WHERE id = :id")
+  suspend fun deleteBodyWeight(id: Long)
 }

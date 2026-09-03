@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.model.BodyWeightLog
 import com.example.model.ExerciseLog
 import com.example.model.ExercisePr
 import com.example.model.RoutineTemplate
@@ -20,15 +21,17 @@ import kotlinx.coroutines.launch
     ExerciseLog::class,
     SetLog::class,
     ExercisePr::class,
-    RoutineTemplate::class
+    RoutineTemplate::class,
+    BodyWeightLog::class
   ],
-  version = 2,
+  version = 3,
   exportSchema = false
 )
 abstract class GymDatabase : RoomDatabase() {
   abstract fun workoutDao(): WorkoutDao
   abstract fun exercisePrDao(): ExercisePrDao
   abstract fun routineDao(): RoutineDao
+  abstract fun bodyWeightDao(): BodyWeightDao
 
   companion object {
     @Volatile
@@ -103,8 +106,15 @@ abstract class GymDatabase : RoomDatabase() {
         routineDao.insertRoutines(defaultRoutines)
 
         val prDao = db.exercisePrDao()
+        val bwDao = db.bodyWeightDao()
         val now = System.currentTimeMillis()
         val oneDay = 86400000L
+
+        bwDao.insertBodyWeight(BodyWeightLog(dateMillis = now - oneDay * 14, weightKg = 79.2))
+        bwDao.insertBodyWeight(BodyWeightLog(dateMillis = now - oneDay * 10, weightKg = 78.8))
+        bwDao.insertBodyWeight(BodyWeightLog(dateMillis = now - oneDay * 7, weightKg = 78.5))
+        bwDao.insertBodyWeight(BodyWeightLog(dateMillis = now - oneDay * 4, weightKg = 78.3))
+        bwDao.insertBodyWeight(BodyWeightLog(dateMillis = now - oneDay * 1, weightKg = 78.0))
 
         prDao.upsertPr(
           ExercisePr(

@@ -2,21 +2,40 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Classy, premium athletic palette (subtle, high-contrast, modern)
-val VoltLime = Color(0xFFCEF23A) // Refined modern athletic lime accent
-val ElectricCyan = Color(0xFF38BDF8) // Clean ice blue
-val FlameOrange = Color(0xFFF97316)
-val GoldPr = Color(0xFFEAB308) // Refined metallic gold
+// Minimalist, Classy & Aesthetic Gym Palette (No Neon, Matte Black & Brushed Titanium)
+val MatteBlack = Color(0xFF090A0D)
+val SurfaceDark = Color(0xFF111318)
+val CardDark = Color(0xFF161820)
+val CardElevated = Color(0xFF1C1E27)
+val BorderSubtle = Color(0xFF262934)
+val BorderHighlight = Color(0xFF383C4C)
 
-val DarkObsidianBg = Color(0xFF0B0C10)
-val DarkSurface = Color(0xFF12141C)
-val DarkCard = Color(0xFF181A24)
-val DarkElevated = Color(0xFF1E212E)
-val DarkBorder = Color(0xFF262A3B)
+// Typography & Text
+val TextPrimary = Color(0xFFF3F4F7)
+val TextSecondary = Color(0xFF9CA3B2)
+val TextTertiary = Color(0xFF646B7B)
 
-val TextWhite = Color(0xFFF8FAFC)
-val TextMuted = Color(0xFF94A3B8)
-val TextDim = Color(0xFF64748B)
+// Classy Metallic & Monochrome Accents (Subtle, High-End Luxury)
+val TitaniumWhite = Color(0xFFF1F3F7)
+val TitaniumSilver = Color(0xFFCBD2DE)
+val PlatinumSteel = Color(0xFF8E95A5)
+val AccentSteel = Color(0xFF4A5263)
 
-val GreenSuccess = Color(0xFF22C55E)
-val PurpleAccent = Color(0xFF8B5CF6)
+// Mapped legacy constants for seamless compatibility without neon
+val VoltLime = Color(0xFFE2E6EE) // Replaced neon lime with clean titanium silver
+val ElectricCyan = Color(0xFFCBD5E1) // Replaced electric cyan with muted ice platinum
+val FlameOrange = Color(0xFFD48B54) // Muted warm amber
+val GoldPr = Color(0xFFD4AF37) // Subtle champagne brass
+
+val DarkObsidianBg = MatteBlack
+val DarkSurface = SurfaceDark
+val DarkCard = CardDark
+val DarkElevated = CardElevated
+val DarkBorder = BorderSubtle
+
+val TextWhite = TextPrimary
+val TextMuted = TextSecondary
+val TextDim = TextTertiary
+
+val GreenSuccess = Color(0xFF5BA872) // Muted sage green
+val PurpleAccent = Color(0xFF9E86C8) // Muted slate violet

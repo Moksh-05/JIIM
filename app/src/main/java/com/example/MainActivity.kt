@@ -19,12 +19,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -56,21 +54,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.ui.components.MinimalDumbbellIcon
 import com.example.ui.screens.AndroidGuideScreen
-import com.example.ui.screens.CalendarScreen
+import com.example.ui.screens.ProfileScreen
 import com.example.ui.screens.ProgressScreen
-import com.example.ui.screens.PrVaultScreen
+import com.example.ui.screens.TrainerScreen
 import com.example.ui.screens.WorkoutScreen
+import com.example.ui.theme.BorderHighlight
+import com.example.ui.theme.BorderSubtle
+import com.example.ui.theme.CardDark
+import com.example.ui.theme.CardElevated
+import com.example.ui.theme.MatteBlack
 import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.theme.VoltLime
+import com.example.ui.theme.PlatinumSteel
+import com.example.ui.theme.SurfaceDark
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.TextTertiary
+import com.example.ui.theme.TitaniumSilver
+import com.example.ui.theme.TitaniumWhite
 import com.example.viewmodel.GymViewModel
 import com.example.viewmodel.GymViewModelFactory
 
 enum class AppTab(val title: String, val icon: ImageVector, val tag: String) {
-  WORKOUTS("Sessions", Icons.Default.FitnessCenter, "nav_workouts_tab"),
+  WORKOUTS("Workout", Icons.Default.FitnessCenter, "nav_workouts_tab"),
+  TRAINER("JIIM AI", Icons.Default.Psychology, "nav_trainer_tab"),
   PROGRESS("Progress", Icons.Default.TrendingUp, "nav_progress_tab"),
-  CALENDAR("Calendar", Icons.Default.CalendarMonth, "nav_calendar_tab"),
-  PR_VAULT("Records", Icons.Default.EmojiEvents, "nav_pr_vault_tab")
+  PROFILE("Profile", Icons.Default.Person, "nav_profile_tab")
 }
 
 class MainActivity : ComponentActivity() {
@@ -105,35 +115,32 @@ fun GymTrackerApp() {
     topBar = {
       TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
-          containerColor = Color(0xFF0B0C10),
-          titleContentColor = Color.White
+          containerColor = MatteBlack,
+          titleContentColor = TitaniumWhite
         ),
         title = {
           Row(verticalAlignment = Alignment.CenterVertically) {
+            MinimalDumbbellIcon(
+              size = 22.dp,
+              tint = TitaniumWhite,
+              accentTint = PlatinumSteel
+            )
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
               text = "JIIM",
               fontWeight = FontWeight.Black,
               fontSize = 20.sp,
-              letterSpacing = 2.sp,
-              color = Color.White
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Box(
-              modifier = Modifier
-                .size(6.dp)
-                .background(VoltLime, CircleShape)
+              letterSpacing = 2.5.sp,
+              color = TitaniumWhite
             )
           }
         },
         actions = {
-          // Subtle connection badge
+          // Subtle connectivity indicator
           Surface(
             shape = RoundedCornerShape(8.dp),
-            color = if (isOnline) Color(0xFF131F17) else Color(0xFF221E14),
-            border = androidx.compose.foundation.BorderStroke(
-              0.5.dp,
-              if (isOnline) Color(0xFF22C55E).copy(alpha = 0.4f) else Color(0xFFF59E0B).copy(alpha = 0.4f)
-            ),
+            color = CardElevated,
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
             modifier = Modifier.padding(end = 8.dp)
           ) {
             Row(
@@ -144,16 +151,16 @@ fun GymTrackerApp() {
                 modifier = Modifier
                   .size(6.dp)
                   .background(
-                    if (isOnline) Color(0xFF22C55E) else Color(0xFFF59E0B),
+                    if (isOnline) Color(0xFF86EFAC) else Color(0xFFD48B54),
                     CircleShape
                   )
               )
               Spacer(modifier = Modifier.width(5.dp))
               Text(
-                text = if (isOnline) "JIIM AI" else "Offline",
+                text = if (isOnline) "AI Active" else "Offline",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = if (isOnline) Color(0xFF86EFAC) else Color(0xFFFDE68A)
+                color = TitaniumSilver
               )
             }
           }
@@ -162,22 +169,22 @@ fun GymTrackerApp() {
           Surface(
             onClick = { viewModel.toggleUnits() },
             shape = RoundedCornerShape(8.dp),
-            color = Color(0xFF161924),
-            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF2B3045)),
+            color = CardElevated,
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
             modifier = Modifier
               .padding(end = 6.dp)
               .testTag("unit_toggle_button")
           ) {
             Text(
               text = if (useLbs) "LBS" else "KG",
-              color = Color.White,
+              color = TitaniumWhite,
               fontWeight = FontWeight.Bold,
               fontSize = 11.sp,
               modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
             )
           }
 
-          // Guide button
+          // Help / Guide button
           IconButton(
             onClick = { showGuideDialog = true },
             modifier = Modifier.testTag("open_guide_button")
@@ -185,7 +192,7 @@ fun GymTrackerApp() {
             Icon(
               imageVector = Icons.Default.HelpOutline,
               contentDescription = "Install & Upload Guide",
-              tint = Color(0xFF94A3B8),
+              tint = TextSecondary,
               modifier = Modifier.size(20.dp)
             )
           }
@@ -194,8 +201,8 @@ fun GymTrackerApp() {
     },
     bottomBar = {
       NavigationBar(
-        containerColor = Color(0xFF0F1118),
-        tonalElevation = 4.dp,
+        containerColor = SurfaceDark,
+        tonalElevation = 2.dp,
         modifier = Modifier
           .windowInsetsPadding(WindowInsets.navigationBars)
           .testTag("main_bottom_navigation")
@@ -209,20 +216,20 @@ fun GymTrackerApp() {
               Icon(
                 imageVector = tab.icon,
                 contentDescription = tab.title,
-                tint = if (isSelected) VoltLime else Color(0xFF64748B),
+                tint = if (isSelected) TitaniumWhite else TextTertiary,
                 modifier = Modifier.size(20.dp)
               )
             },
             label = {
               Text(
                 text = tab.title,
-                color = if (isSelected) Color.White else Color(0xFF64748B),
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (isSelected) TitaniumWhite else TextTertiary,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                 fontSize = 11.sp
               )
             },
             colors = NavigationBarItemDefaults.colors(
-              indicatorColor = Color(0xFF1D2214)
+              indicatorColor = CardElevated
             ),
             modifier = Modifier.testTag(tab.tag)
           )
@@ -233,9 +240,9 @@ fun GymTrackerApp() {
     val contentModifier = Modifier.padding(innerPadding)
     when (tabs[selectedTabIndex]) {
       AppTab.WORKOUTS -> WorkoutScreen(viewModel = viewModel, modifier = contentModifier)
+      AppTab.TRAINER -> TrainerScreen(viewModel = viewModel, modifier = contentModifier)
       AppTab.PROGRESS -> ProgressScreen(viewModel = viewModel, modifier = contentModifier)
-      AppTab.CALENDAR -> CalendarScreen(viewModel = viewModel, modifier = contentModifier)
-      AppTab.PR_VAULT -> PrVaultScreen(viewModel = viewModel, modifier = contentModifier)
+      AppTab.PROFILE -> ProfileScreen(viewModel = viewModel, modifier = contentModifier)
     }
   }
 
@@ -244,8 +251,8 @@ fun GymTrackerApp() {
     Dialog(onDismissRequest = { showGuideDialog = false }) {
       Surface(
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF0F1118),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF262B3B)),
+        color = SurfaceDark,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
         modifier = Modifier
           .fillMaxSize()
           .padding(vertical = 24.dp)

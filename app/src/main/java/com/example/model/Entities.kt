@@ -74,6 +74,14 @@ data class ExercisePr(
   val dateAchieved: Long
 )
 
+@Entity(tableName = "body_weight_logs")
+data class BodyWeightLog(
+  @PrimaryKey(autoGenerate = true) val id: Long = 0,
+  val dateMillis: Long,
+  val weightKg: Double,
+  val notes: String = ""
+)
+
 @Entity(tableName = "routine_templates")
 data class RoutineTemplate(
   @PrimaryKey(autoGenerate = true) val id: Long = 0,

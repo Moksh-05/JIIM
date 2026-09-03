@@ -17,17 +17,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.MonitorWeight
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.material.icons.filled.TrendingFlat
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -36,9 +41,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,23 +57,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.model.AiProgressAnalysis
-import com.example.model.ExercisePr
-import com.example.model.WorkoutWithExercises
-import com.example.ui.theme.VoltLime
+import androidx.compose.ui.window.Dialog
+import com.example.model.BodyWeightLog
+import com.example.model.ExerciseLibrary
+import com.example.ui.components.MinimalDumbbellIcon
+import com.example.ui.theme.BorderHighlight
+import com.example.ui.theme.BorderSubtle
+import com.example.ui.theme.CardDark
+import com.example.ui.theme.CardElevated
+import com.example.ui.theme.MatteBlack
+import com.example.ui.theme.PlatinumSteel
+import com.example.ui.theme.SurfaceDark
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.TextTertiary
+import com.example.ui.theme.TitaniumSilver
+import com.example.ui.theme.TitaniumWhite
+import com.example.viewmodel.ExerciseSessionPoint
 import com.example.viewmodel.GymViewModel
+import com.example.viewmodel.PlateauInsight
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.roundToInt
 
 @Composable
 fun ProgressScreen(
@@ -72,42 +94,48 @@ fun ProgressScreen(
   modifier: Modifier = Modifier
 ) {
   val workouts by viewModel.allWorkouts.collectAsState()
-  val prs by viewModel.allPrs.collectAsState()
-  val isOnline by viewModel.isOnline.collectAsState()
-  val isAnalyzing by viewModel.isAnalyzing.collectAsState()
+  val bodyWeights by viewModel.allBodyWeights.collectAsState()
   val aiAnalysis by viewModel.aiAnalysis.collectAsState()
+  val isAnalyzing by viewModel.isAnalyzing.collectAsState()
+  val isOnline by viewModel.isOnline.collectAsState()
   val useLbs by viewModel.useLbs.collectAsState()
+  val customExercises by viewModel.customExercises.collectAsState()
 
-  var timeRangeFilter by remember { mutableStateOf("14D") } // "14D", "30D", "ALL"
-  var showFullAiBreakdown by remember { mutableStateOf(true) }
-
-  val filteredWorkouts = remember(workouts, timeRangeFilter) {
-    val now = System.currentTimeMillis()
-    when (timeRangeFilter) {
-      "14D" -> workouts.filter { it.session.startTimeMillis >= now - 14 * 86400000L }
-      "30D" -> workouts.filter { it.session.startTimeMillis >= now - 30 * 86400000L }
-      else -> workouts
-    }.sortedBy { it.session.startTimeMillis }
+  // Tracked Exercise for Metric 1
+  var selectedExercise by remember { mutableStateOf("Barbell Bench Press") }
+  val exerciseHistory = remember(workouts, selectedExercise) {
+    viewModel.getExerciseHistory(selectedExercise)
   }
 
-  val totalVolume = remember(filteredWorkouts) {
-    filteredWorkouts.sumOf { it.session.totalVolumeKg }
+  // Metric 3: Plateau Insights for past 2-3 weeks
+  val plateauInsights = remember(workouts) {
+    viewModel.getPlateauInsights()
   }
-  val totalSets = remember(filteredWorkouts) {
-    filteredWorkouts.sumOf { it.session.totalSets }
+
+  // Modal for logging body weight
+  var showLogWeightDialog by remember { mutableStateOf(false) }
+
+  if (showLogWeightDialog) {
+    LogBodyWeightDialog(
+      useLbs = useLbs,
+      onSaveWeight = { wt ->
+        viewModel.logBodyWeight(wt)
+        showLogWeightDialog = false
+      },
+      onDismiss = { showLogWeightDialog = false }
+    )
   }
-  val totalWorkoutsCount = filteredWorkouts.size
 
   LazyColumn(
     modifier = modifier
       .fillMaxSize()
-      .background(Color(0xFF0B0C10))
+      .background(MatteBlack)
       .padding(horizontal = 16.dp),
-    verticalArrangement = Arrangement.spacedBy(16.dp)
+    verticalArrangement = Arrangement.spacedBy(18.dp)
   ) {
+    // Header
     item {
-      Spacer(modifier = Modifier.height(12.dp))
-      // Top Header
+      Spacer(modifier = Modifier.height(10.dp))
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -115,855 +143,800 @@ fun ProgressScreen(
       ) {
         Column {
           Text(
-            text = "PROGRESS",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Black,
-            color = Color.White,
-            letterSpacing = 2.sp
+            text = "ANALYTICS & METRICS",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.5.sp,
+            color = PlatinumSteel
           )
           Text(
-            text = "Volume load & progressive overload trends",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFF94A3B8)
+            text = "Progress Tracking",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = TitaniumWhite
           )
         }
 
-        // Status Badge
         Surface(
           shape = RoundedCornerShape(8.dp),
-          color = if (isOnline) Color(0xFF131F17) else Color(0xFF221E14),
-          border = androidx.compose.foundation.BorderStroke(
-            0.5.dp,
-            if (isOnline) Color(0xFF22C55E).copy(alpha = 0.4f) else Color(0xFFF59E0B).copy(alpha = 0.4f)
-          )
+          color = CardElevated,
+          border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
         ) {
+          Text(
+            text = "3 Key Metrics",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TitaniumSilver,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+          )
+        }
+      }
+    }
+
+    // =============================================================
+    // METRIC 1: PROGRESSIVE OVERLOAD PER EXERCISE GRAPH
+    // =============================================================
+    item {
+      Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+        modifier = Modifier.fillMaxWidth().testTag("metric_1_progressive_overload_card")
+      ) {
+        Column(modifier = Modifier.padding(16.dp)) {
           Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
           ) {
-            Box(
-              modifier = Modifier
-                .size(6.dp)
-                .background(
-                  if (isOnline) Color(0xFF22C55E) else Color(0xFFF59E0B),
-                  CircleShape
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Box(
+                modifier = Modifier
+                  .size(32.dp)
+                  .background(CardElevated, CircleShape)
+                  .border(1.dp, BorderHighlight, CircleShape),
+                contentAlignment = Alignment.Center
+              ) {
+                Icon(
+                  imageVector = Icons.Default.TrendingUp,
+                  contentDescription = null,
+                  tint = TitaniumWhite,
+                  modifier = Modifier.size(18.dp)
                 )
-            )
-            Spacer(modifier = Modifier.width(5.dp))
-            Text(
-              text = if (isOnline) "JIIM AI" else "Offline",
-              color = if (isOnline) Color(0xFF86EFAC) else Color(0xFFFDE68A),
-              fontWeight = FontWeight.SemiBold,
-              fontSize = 10.sp
-            )
+              }
+              Spacer(modifier = Modifier.width(10.dp))
+              Column {
+                Text(
+                  text = "METRIC 1",
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.sp,
+                  color = PlatinumSteel
+                )
+                Text(
+                  text = "Progressive Overload",
+                  fontSize = 15.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = TitaniumWhite
+                )
+              }
+            }
+
+            // Overload status badge
+            val latestPoint = exerciseHistory.lastOrNull()
+            val isOverloadNow = latestPoint?.isOverloadComparedToPrevious == true
+            Surface(
+              shape = RoundedCornerShape(6.dp),
+              color = if (isOverloadNow) Color(0xFF142217) else CardElevated,
+              border = androidx.compose.foundation.BorderStroke(
+                0.5.dp,
+                if (isOverloadNow) Color(0xFF5BA872) else BorderSubtle
+              )
+            ) {
+              Text(
+                text = if (isOverloadNow) "Overload: UP" else "Tracking Active",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isOverloadNow) Color(0xFF86EFAC) else TitaniumSilver,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+              )
+            }
           }
-        }
-      }
-    }
 
-    // Time filter pills
-    item {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-      ) {
-        listOf("14D" to "14 Days", "30D" to "30 Days", "ALL" to "All Time").forEach { (key, label) ->
-          val isSelected = timeRangeFilter == key
-          Surface(
-            onClick = { timeRangeFilter = key },
-            shape = RoundedCornerShape(8.dp),
-            color = if (isSelected) VoltLime else Color(0xFF141620),
-            border = androidx.compose.foundation.BorderStroke(
-              0.5.dp,
-              if (isSelected) VoltLime else Color(0xFF262B3B)
-            ),
-            modifier = Modifier.weight(1f)
-          ) {
-            Text(
-              text = label,
-              color = if (isSelected) Color(0xFF0B0C10) else Color(0xFF94A3B8),
-              fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-              fontSize = 11.sp,
-              modifier = Modifier
-                .padding(vertical = 8.dp)
-                .fillMaxWidth(),
-              textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-          }
-        }
-      }
-    }
+          Spacer(modifier = Modifier.height(14.dp))
 
-    // Summary Metric Cards
-    item {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-      ) {
-        val volumeDisplay = if (useLbs) {
-          "${(totalVolume * 2.20462).toInt()} lbs"
-        } else {
-          "${totalVolume.toInt()} kg"
-        }
-
-        MetricStatBox(
-          label = "Total Volume",
-          value = volumeDisplay,
-          subtitle = "Tonnage moved",
-          accentColor = VoltLime,
-          modifier = Modifier.weight(1f)
-        )
-        MetricStatBox(
-          label = "Working Sets",
-          value = "$totalSets",
-          subtitle = "$totalWorkoutsCount sessions",
-          accentColor = Color(0xFF38BDF8),
-          modifier = Modifier.weight(1f)
-        )
-      }
-    }
-
-    // JIIM AI Progressive Overload & Hypertrophy Coach Card
-    item {
-      AiCoachCard(
-        analysis = aiAnalysis,
-        isAnalyzing = isAnalyzing,
-        isOnline = isOnline,
-        isExpanded = showFullAiBreakdown,
-        onToggleExpand = { showFullAiBreakdown = !showFullAiBreakdown },
-        onRunAnalysis = { viewModel.runProgressAnalysis() }
-      )
-    }
-
-    // Chart 1: Volume Progression Canvas Curve
-    item {
-      VolumeProgressionChart(
-        workouts = filteredWorkouts,
-        useLbs = useLbs
-      )
-    }
-
-    // Chart 2: Hypertrophy Muscle Group Distribution
-    item {
-      HypertrophyMuscleDistributionCard(workouts = filteredWorkouts)
-    }
-
-    // Chart 3: Estimated 1RM Progression
-    item {
-      PrProgressionCard(prs = prs, useLbs = useLbs)
-    }
-
-    item {
-      Spacer(modifier = Modifier.height(30.dp))
-    }
-  }
-}
-
-@Composable
-private fun MetricStatBox(
-  label: String,
-  value: String,
-  subtitle: String,
-  accentColor: Color,
-  modifier: Modifier = Modifier
-) {
-  Surface(
-    shape = RoundedCornerShape(12.dp),
-    color = Color(0xFF12141C),
-    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF242838)),
-    modifier = modifier
-  ) {
-    Column(modifier = Modifier.padding(14.dp)) {
-      Text(
-        text = label,
-        color = Color(0xFF94A3B8),
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium
-      )
-      Spacer(modifier = Modifier.height(4.dp))
-      Text(
-        text = value,
-        color = Color.White,
-        fontSize = 18.sp,
-        fontWeight = FontWeight.Bold
-      )
-      Spacer(modifier = Modifier.height(2.dp))
-      Text(
-        text = subtitle,
-        color = Color(0xFF64748B),
-        fontSize = 10.sp
-      )
-    }
-  }
-}
-
-@Composable
-private fun AiCoachCard(
-  analysis: AiProgressAnalysis?,
-  isAnalyzing: Boolean,
-  isOnline: Boolean,
-  isExpanded: Boolean,
-  onToggleExpand: () -> Unit,
-  onRunAnalysis: () -> Unit
-) {
-  Card(
-    shape = RoundedCornerShape(16.dp),
-    colors = CardDefaults.cardColors(containerColor = Color(0xFF12141C)),
-    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF272B3C)),
-    modifier = Modifier
-      .fillMaxWidth()
-      .testTag("ai_coach_card")
-  ) {
-    Column(modifier = Modifier.padding(16.dp)) {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Box(
-            modifier = Modifier
-              .size(34.dp)
-              .background(Color(0xFF181B26), CircleShape)
-              .border(0.5.dp, Color(0xFF282D3E), CircleShape),
-            contentAlignment = Alignment.Center
-          ) {
-            Icon(
-              imageVector = Icons.Default.TrendingUp,
-              contentDescription = "JIIM AI",
-              tint = VoltLime,
-              modifier = Modifier.size(18.dp)
-            )
-          }
-          Spacer(modifier = Modifier.width(10.dp))
-          Column {
-            Text(
-              text = "JIIM AI",
-              fontWeight = FontWeight.Bold,
-              fontSize = 13.sp,
-              color = Color.White,
-              letterSpacing = 0.5.sp
-            )
-            Text(
-              text = if (isOnline) "Adaptive hypertrophy & overload analysis" else "Offline diagnostic engine",
-              fontSize = 11.sp,
-              color = Color(0xFF94A3B8)
-            )
-          }
-        }
-
-        Surface(
-          shape = RoundedCornerShape(8.dp),
-          color = Color(0xFF181B26),
-          border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF282D3E))
-        ) {
+          // Exercise Selector Horizontal Carousel
           Text(
-            text = analysis?.overallScore ?: "Active",
-            color = VoltLime,
-            fontWeight = FontWeight.SemiBold,
+            text = "Select Exercise to Inspect:",
             fontSize = 11.sp,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            color = TextSecondary,
+            fontWeight = FontWeight.Medium
           )
+          Spacer(modifier = Modifier.height(6.dp))
+
+          val commonExercises = remember(customExercises) {
+            listOf(
+              "Barbell Bench Press",
+              "Barbell Back Squat",
+              "Incline Dumbbell Press",
+              "Barbell Deadlift",
+              "Overhead Barbell Press",
+              "Lat Pulldown",
+              "Dumbbell Lateral Raise",
+              "Romanian Deadlift"
+            ) + customExercises.map { it.name }
+          }
+
+          LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(commonExercises) { exName ->
+              val isSelected = exName.equals(selectedExercise, ignoreCase = true)
+              Surface(
+                onClick = { selectedExercise = exName },
+                shape = RoundedCornerShape(8.dp),
+                color = if (isSelected) TitaniumWhite else CardDark,
+                border = androidx.compose.foundation.BorderStroke(
+                  1.dp,
+                  if (isSelected) TitaniumWhite else BorderSubtle
+                )
+              ) {
+                Text(
+                  text = exName,
+                  fontSize = 11.sp,
+                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                  color = if (isSelected) MatteBlack else TextSecondary,
+                  modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          // Key Stats Summary for this exercise
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            val maxWeightLogged = exerciseHistory.maxOfOrNull { it.topWeightKg } ?: 0.0
+            val latestTop = exerciseHistory.lastOrNull()?.topWeightKg ?: 0.0
+            val est1Rm = exerciseHistory.lastOrNull()?.estimated1Rm ?: 0.0
+
+            val peakDisplay = if (useLbs) "${(maxWeightLogged * 2.20462).toInt()} lbs" else "${maxWeightLogged.toInt()} kg"
+            val currentDisplay = if (useLbs) "${(latestTop * 2.20462).toInt()} lbs" else "${latestTop.toInt()} kg"
+            val est1RmDisplay = if (useLbs) "${(est1Rm * 2.20462).toInt()} lbs" else "${est1Rm.toInt()} kg"
+
+            MetricSummaryPill(label = "Current Load", value = currentDisplay, modifier = Modifier.weight(1f))
+            MetricSummaryPill(label = "All-Time Best", value = peakDisplay, modifier = Modifier.weight(1f))
+            MetricSummaryPill(label = "Estimated 1RM", value = est1RmDisplay, modifier = Modifier.weight(1f))
+          }
+
+          Spacer(modifier = Modifier.height(14.dp))
+
+          // Progressive Overload Canvas Graph
+          if (exerciseHistory.size >= 2) {
+            ProgressiveOverloadCanvasChart(
+              points = exerciseHistory,
+              useLbs = useLbs,
+              modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+            )
+          } else {
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = CardDark,
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp)
+            ) {
+              Text(
+                text = "Log at least 2 sessions of $selectedExercise to view the progressive overload trajectory line.",
+                color = TextTertiary,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(14.dp)
+              )
+            }
+          }
         }
       }
+    }
 
-      Spacer(modifier = Modifier.height(12.dp))
-
-      // Progressive Overload Verdict Card
-      Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color(0xFF161924),
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF242838)),
-        modifier = Modifier.fillMaxWidth()
+    // =============================================================
+    // METRIC 2: BODY WEIGHT TRACKER
+    // =============================================================
+    item {
+      Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+        modifier = Modifier.fillMaxWidth().testTag("metric_2_body_weight_card")
       ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-          Text(
-            text = "PROGRESSION EVALUATION",
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp,
-            color = Color(0xFF94A3B8),
-            letterSpacing = 0.5.sp
-          )
-          Spacer(modifier = Modifier.height(4.dp))
-          Text(
-            text = analysis?.progressiveOverloadVerdict ?: "Calculating overload trajectory across sessions...",
-            color = Color(0xFFE2E8F0),
-            fontSize = 12.sp,
-            lineHeight = 17.sp
-          )
+        Column(modifier = Modifier.padding(16.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Box(
+                modifier = Modifier
+                  .size(32.dp)
+                  .background(CardElevated, CircleShape)
+                  .border(1.dp, BorderHighlight, CircleShape),
+                contentAlignment = Alignment.Center
+              ) {
+                Icon(
+                  imageVector = Icons.Default.MonitorWeight,
+                  contentDescription = null,
+                  tint = TitaniumWhite,
+                  modifier = Modifier.size(18.dp)
+                )
+              }
+              Spacer(modifier = Modifier.width(10.dp))
+              Column {
+                Text(
+                  text = "METRIC 2",
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.sp,
+                  color = PlatinumSteel
+                )
+                Text(
+                  text = "Body Weight Trend",
+                  fontSize = 15.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = TitaniumWhite
+                )
+              }
+            }
+
+            Surface(
+              onClick = { showLogWeightDialog = true },
+              shape = RoundedCornerShape(8.dp),
+              color = CardElevated,
+              border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+              modifier = Modifier.testTag("log_body_weight_button")
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(Icons.Default.Add, contentDescription = null, tint = TitaniumWhite, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "Log Weight",
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  color = TitaniumWhite
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(14.dp))
+
+          // Body Weight Stats Row
+          val latestBw = bodyWeights.lastOrNull()?.weightKg ?: 78.0
+          val initialBw = bodyWeights.firstOrNull()?.weightKg ?: latestBw
+          val delta = latestBw - initialBw
+
+          val latestStr = if (useLbs) "${((latestBw * 2.20462) * 10).toInt() / 10.0} lbs" else "${latestBw} kg"
+          val deltaStr = if (useLbs) {
+            val dLbs = ((delta * 2.20462) * 10).toInt() / 10.0
+            if (dLbs > 0) "+$dLbs lbs" else "$dLbs lbs"
+          } else {
+            val dKg = ((delta) * 10).toInt() / 10.0
+            if (dKg > 0) "+$dKg kg" else "$dKg kg"
+          }
+
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            MetricSummaryPill(label = "Current Weight", value = latestStr, modifier = Modifier.weight(1f))
+            MetricSummaryPill(label = "Net Delta", value = deltaStr, modifier = Modifier.weight(1f))
+            MetricSummaryPill(label = "Entries", value = "${bodyWeights.size} logs", modifier = Modifier.weight(1f))
+          }
+
+          Spacer(modifier = Modifier.height(14.dp))
+
+          // Body Weight Canvas Chart
+          if (bodyWeights.size >= 2) {
+            BodyWeightCanvasChart(
+              logs = bodyWeights,
+              useLbs = useLbs,
+              modifier = Modifier
+                .fillMaxWidth()
+                .height(140.dp)
+            )
+          } else {
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = CardDark,
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp)
+            ) {
+              Text(
+                text = "Tap 'Log Weight' to begin tracking daily body mass trends.",
+                color = TextTertiary,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(12.dp)
+              )
+            }
+          }
         }
       }
+    }
 
-      Spacer(modifier = Modifier.height(8.dp))
-
-      // Toggle for full breakdown
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .clickable { onToggleExpand() }
-          .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    // =============================================================
+    // METRIC 3: AI & DATA ANALYSIS: PLATEAUS & FORM FIXES (PAST 2-3 WEEKS)
+    // User requested: "3. The AI, or just the data, being analyzed and seeing
+    // what exercises I'm plateauing on and what form I need to fix based on my
+    // previous two to three weeks' suggestions."
+    // =============================================================
+    item {
+      Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+        modifier = Modifier.fillMaxWidth().testTag("metric_3_plateau_analysis_card")
       ) {
-        Text(
-          text = if (isExpanded) "Hide details" else "View breakdown & recommendations",
-          color = Color(0xFF94A3B8),
-          fontWeight = FontWeight.Medium,
-          fontSize = 12.sp
-        )
-        Icon(
-          imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-          contentDescription = null,
-          tint = Color(0xFF94A3B8),
-          modifier = Modifier.size(16.dp)
-        )
-      }
-
-      AnimatedVisibility(visible = isExpanded) {
-        Column(
-          modifier = Modifier.padding(top = 8.dp),
-          verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          // Hypertrophy status
-          if (analysis?.hypertrophyStatus != null) {
-            Surface(
-              shape = RoundedCornerShape(8.dp),
-              color = Color(0xFF161924),
-              border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF242838)),
-              modifier = Modifier.fillMaxWidth()
-            ) {
-              Column(modifier = Modifier.padding(10.dp)) {
-                Text(
-                  text = "VOLUME BREAKDOWN",
-                  fontWeight = FontWeight.SemiBold,
-                  fontSize = 11.sp,
-                  color = Color(0xFF38BDF8)
+        Column(modifier = Modifier.padding(16.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Box(
+                modifier = Modifier
+                  .size(32.dp)
+                  .background(CardElevated, CircleShape)
+                  .border(1.dp, BorderHighlight, CircleShape),
+                contentAlignment = Alignment.Center
+              ) {
+                Icon(
+                  imageVector = Icons.Default.AutoAwesome,
+                  contentDescription = null,
+                  tint = TitaniumWhite,
+                  modifier = Modifier.size(17.dp)
                 )
-                Spacer(modifier = Modifier.height(3.dp))
+              }
+              Spacer(modifier = Modifier.width(10.dp))
+              Column {
                 Text(
-                  text = analysis.hypertrophyStatus,
-                  color = Color(0xFFCBD5E1),
-                  fontSize = 12.sp,
-                  lineHeight = 16.sp
+                  text = "METRIC 3",
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.sp,
+                  color = PlatinumSteel
+                )
+                Text(
+                  text = "Plateau & Form Analysis",
+                  fontSize = 15.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = TitaniumWhite
                 )
               }
             }
-          }
 
-          // Detected Split
-          if (analysis?.detectedSplitName != null) {
             Surface(
+              onClick = { viewModel.runProgressAnalysis() },
               shape = RoundedCornerShape(8.dp),
-              color = Color(0xFF161924),
-              border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF242838)),
-              modifier = Modifier.fillMaxWidth()
+              color = CardElevated,
+              border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+              modifier = Modifier.testTag("run_ai_analysis_button")
             ) {
-              Column(modifier = Modifier.padding(10.dp)) {
-                Text(
-                  text = "DETECTED ROUTINE: ${analysis.detectedSplitName}",
-                  fontWeight = FontWeight.SemiBold,
-                  fontSize = 11.sp,
-                  color = Color(0xFFCBD5E1)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                analysis.detectedSplitBreakdown.forEach { dayLine ->
-                  Text(
-                    text = dayLine,
-                    color = Color(0xFF94A3B8),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(vertical = 1.dp)
-                  )
+              Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                if (isAnalyzing) {
+                  CircularProgressIndicator(modifier = Modifier.size(12.dp), color = TitaniumWhite, strokeWidth = 1.5.dp)
+                } else {
+                  Icon(Icons.Default.Refresh, contentDescription = null, tint = TitaniumSilver, modifier = Modifier.size(12.dp))
                 }
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = if (isAnalyzing) "Auditing..." else "2-3 Wk Audit",
+                  fontSize = 10.5.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  color = TitaniumSilver
+                )
               }
             }
           }
 
-          // Plateau / Stagnation warning
-          if (!analysis?.stagnationAlerts.isNullOrEmpty()) {
-            Surface(
-              shape = RoundedCornerShape(8.dp),
-              color = Color(0xFF1F1717),
-              border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFEF4444).copy(alpha = 0.3f)),
-              modifier = Modifier.fillMaxWidth()
-            ) {
-              Column(modifier = Modifier.padding(10.dp)) {
-                Text(
-                  text = "PLATEAU ADVISORY",
-                  fontWeight = FontWeight.SemiBold,
-                  fontSize = 11.sp,
-                  color = Color(0xFFF87171)
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                analysis?.stagnationAlerts?.forEach { alert ->
-                  Text(
-                    text = alert,
-                    color = Color(0xFFFCA5A5),
-                    fontSize = 11.sp,
-                    lineHeight = 16.sp
-                  )
-                }
-              }
-            }
-          }
+          Spacer(modifier = Modifier.height(10.dp))
+          Text(
+            text = "Diagnostic evaluation of stalled lifts and biomechanical form cues:",
+            fontSize = 11.5.sp,
+            color = TextSecondary
+          )
 
-          // Tactical recommendations
-          if (!analysis?.recommendations.isNullOrEmpty()) {
-            Surface(
-              shape = RoundedCornerShape(8.dp),
-              color = Color(0xFF161924),
-              border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF242838)),
-              modifier = Modifier.fillMaxWidth()
-            ) {
-              Column(modifier = Modifier.padding(10.dp)) {
-                Text(
-                  text = "RECOMMENDATIONS",
-                  fontWeight = FontWeight.SemiBold,
-                  fontSize = 11.sp,
-                  color = VoltLime
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                analysis?.recommendations?.forEach { rec ->
+          Spacer(modifier = Modifier.height(12.dp))
+
+          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            plateauInsights.forEach { insight ->
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = CardDark,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Column(modifier = Modifier.padding(14.dp)) {
                   Row(
-                    modifier = Modifier.padding(vertical = 2.dp),
-                    verticalAlignment = Alignment.Top
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                   ) {
-                    Box(
-                      modifier = Modifier
-                        .padding(top = 5.dp)
-                        .size(4.dp)
-                        .background(VoltLime, CircleShape)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                      text = rec,
-                      color = Color(0xFFCBD5E1),
-                      fontSize = 11.sp,
-                      lineHeight = 16.sp
+                      text = insight.exerciseName,
+                      fontSize = 14.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = TitaniumWhite
                     )
+
+                    val stalledWtStr = if (useLbs) "${(insight.stalledWeightKg * 2.20462).toInt()} lbs" else "${insight.stalledWeightKg.toInt()} kg"
+                    Surface(
+                      shape = RoundedCornerShape(6.dp),
+                      color = Color(0xFF261D15),
+                      border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFD48B54).copy(alpha = 0.5f))
+                    ) {
+                      Text(
+                        text = "Stalled at $stalledWtStr (${insight.sessionCount} sessions)",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFFDBA74),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                      )
+                    }
+                  }
+
+                  Spacer(modifier = Modifier.height(8.dp))
+
+                  // Form Fix Cue
+                  Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF0F1117),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle),
+                    modifier = Modifier.fillMaxWidth()
+                  ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                      Text(
+                        text = "BIOMECHANICAL FORM FIX",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                        color = PlatinumSteel
+                      )
+                      Spacer(modifier = Modifier.height(3.dp))
+                      Text(
+                        text = insight.formFixCue,
+                        fontSize = 12.sp,
+                        color = TextPrimary,
+                        lineHeight = 17.sp
+                      )
+                    }
+                  }
+
+                  Spacer(modifier = Modifier.height(6.dp))
+
+                  // Recommended Accessory
+                  Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF0F1117),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle),
+                    modifier = Modifier.fillMaxWidth()
+                  ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                      Text(
+                        text = "RECOMMENDED ACCESSORY TO UNSTICK",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                        color = PlatinumSteel
+                      )
+                      Spacer(modifier = Modifier.height(3.dp))
+                      Text(
+                        text = insight.recommendedAccessory,
+                        fontSize = 12.sp,
+                        color = TitaniumSilver,
+                        lineHeight = 17.sp
+                      )
+                    }
                   }
                 }
               }
             }
           }
-        }
-      }
 
-      Spacer(modifier = Modifier.height(12.dp))
-
-      // Refresh Analysis Button
-      Button(
-        onClick = onRunAnalysis,
-        enabled = !isAnalyzing,
-        colors = ButtonDefaults.buttonColors(
-          containerColor = Color(0xFF1E2232),
-          contentColor = Color.White,
-          disabledContainerColor = Color(0xFF161822),
-          disabledContentColor = Color(0xFF5A6076)
-        ),
-        shape = RoundedCornerShape(10.dp),
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF2C3246)),
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(42.dp)
-          .testTag("run_ai_analysis_button")
-      ) {
-        if (isAnalyzing) {
-          CircularProgressIndicator(
-            modifier = Modifier.size(16.dp),
-            color = Color.White,
-            strokeWidth = 2.dp
-          )
-          Spacer(modifier = Modifier.width(8.dp))
-          Text("Analyzing...", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-        } else {
-          Text(
-            text = "ANALYZE PROGRESSION",
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            letterSpacing = 0.5.sp
-          )
-        }
-      }
-    }
-  }
-}
-
-@Composable
-private fun VolumeProgressionChart(
-  workouts: List<WorkoutWithExercises>,
-  useLbs: Boolean
-) {
-  val dateFormat = remember { SimpleDateFormat("MM/dd", Locale.getDefault()) }
-
-  Card(
-    shape = RoundedCornerShape(16.dp),
-    colors = CardDefaults.cardColors(containerColor = Color(0xFF12141C)),
-    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF242838)),
-    modifier = Modifier
-      .fillMaxWidth()
-      .testTag("volume_progression_chart")
-  ) {
-    Column(modifier = Modifier.padding(16.dp)) {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Column {
-          Text(
-            text = "VOLUME OVER TIME",
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            fontSize = 13.sp,
-            letterSpacing = 0.5.sp
-          )
-          Text(
-            text = if (useLbs) "Total weight moved per session (lbs)" else "Total weight moved per session (kg)",
-            color = Color(0xFF94A3B8),
-            fontSize = 11.sp
-          )
-        }
-        Icon(Icons.Default.ShowChart, contentDescription = null, tint = VoltLime, modifier = Modifier.size(18.dp))
-      }
-
-      Spacer(modifier = Modifier.height(18.dp))
-
-      if (workouts.isEmpty()) {
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .height(160.dp),
-          contentAlignment = Alignment.Center
-        ) {
-          Text("No sessions recorded in this period", color = Color(0xFF64748B), fontSize = 12.sp)
-        }
-      } else {
-        val volumes = workouts.map {
-          if (useLbs) it.session.totalVolumeKg * 2.20462 else it.session.totalVolumeKg
-        }
-        val dates = workouts.map { dateFormat.format(Date(it.session.startTimeMillis)) }
-        val maxVol = (volumes.maxOrNull() ?: 1000.0).coerceAtLeast(500.0)
-
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .height(180.dp)
-        ) {
-          Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-            val paddingBottom = 30f
-            val chartHeight = h - paddingBottom
-            val n = volumes.size
-
-            // Guide lines
-            val gridLines = 3
-            for (i in 0..gridLines) {
-              val y = chartHeight * (1f - (i.toFloat() / gridLines))
-              drawLine(
-                color = Color(0xFF242838),
-                start = Offset(0f, y),
-                end = Offset(w, y),
-                strokeWidth = 1f
-              )
-            }
-
-            if (n >= 1) {
-              val points = mutableListOf<Offset>()
-              val stepX = if (n > 1) w / (n - 1) else w / 2
-
-              for (i in 0 until n) {
-                val x = if (n > 1) i * stepX else w / 2
-                val ratio = (volumes[i] / maxVol).toFloat().coerceIn(0.05f, 1f)
-                val y = chartHeight * (1f - ratio)
-                points.add(Offset(x, y))
-              }
-
-              val fillPath = Path().apply {
-                moveTo(points.first().x, chartHeight)
-                points.forEach { lineTo(it.x, it.y) }
-                lineTo(points.last().x, chartHeight)
-                close()
-              }
-
-              drawPath(
-                path = fillPath,
-                brush = Brush.verticalGradient(
-                  colors = listOf(VoltLime.copy(alpha = 0.2f), Color.Transparent),
-                  startY = 0f,
-                  endY = chartHeight
+          // Summary Verdict from Gemini or Offline Analyzer
+          aiAnalysis?.let { analysis ->
+            Spacer(modifier = Modifier.height(14.dp))
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = CardElevated,
+              border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                  text = "AI PROGRESSION VERDICT",
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 0.5.sp,
+                  color = PlatinumSteel
                 )
-              )
-
-              val strokePath = Path().apply {
-                moveTo(points.first().x, points.first().y)
-                for (i in 1 until points.size) {
-                  lineTo(points[i].x, points[i].y)
-                }
-              }
-
-              drawPath(
-                path = strokePath,
-                color = VoltLime,
-                style = Stroke(width = 3f)
-              )
-
-              points.forEach { pt ->
-                drawCircle(
-                  color = Color(0xFF0B0C10),
-                  radius = 5f,
-                  center = pt
-                )
-                drawCircle(
-                  color = VoltLime,
-                  radius = 3.5f,
-                  center = pt
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                  text = analysis.progressiveOverloadVerdict,
+                  fontSize = 12.sp,
+                  color = TextPrimary,
+                  lineHeight = 17.sp
                 )
               }
             }
           }
         }
+      }
 
-        // X-axis labels
+      Spacer(modifier = Modifier.height(40.dp))
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// HELPER PILL
+// -------------------------------------------------------------
+@Composable
+private fun MetricSummaryPill(
+  label: String,
+  value: String,
+  modifier: Modifier = Modifier
+) {
+  Surface(
+    shape = RoundedCornerShape(10.dp),
+    color = CardDark,
+    border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle),
+    modifier = modifier
+  ) {
+    Column(modifier = Modifier.padding(10.dp)) {
+      Text(
+        text = label,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Medium,
+        color = TextSecondary
+      )
+      Spacer(modifier = Modifier.height(3.dp))
+      Text(
+        text = value,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        color = TitaniumWhite
+      )
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// PROGRESSIVE OVERLOAD CANVAS GRAPH
+// -------------------------------------------------------------
+@Composable
+private fun ProgressiveOverloadCanvasChart(
+  points: List<ExerciseSessionPoint>,
+  useLbs: Boolean,
+  modifier: Modifier = Modifier
+) {
+  Box(
+    modifier = modifier
+      .background(Color(0xFF0C0D12), RoundedCornerShape(12.dp))
+      .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+      .padding(horizontal = 14.dp, vertical = 12.dp)
+  ) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+      val w = size.width
+      val h = size.height
+
+      val weights = points.map { if (useLbs) it.topWeightKg * 2.20462 else it.topWeightKg }
+      val minVal = weights.minOrNull() ?: 0.0
+      val maxVal = weights.maxOrNull() ?: 100.0
+      val span = (maxVal - minVal).coerceAtLeast(5.0)
+
+      val stepX = w / (points.size - 1).coerceAtLeast(1)
+
+      // Draw subtle background grid lines
+      for (i in 0..3) {
+        val y = h * (i / 3f)
+        drawLine(
+          color = Color(0xFF1F222B),
+          start = Offset(0f, y),
+          end = Offset(w, y),
+          strokeWidth = 1f
+        )
+      }
+
+      val path = Path()
+      val coords = mutableListOf<Offset>()
+
+      points.forEachIndexed { i, p ->
+        val weight = if (useLbs) p.topWeightKg * 2.20462 else p.topWeightKg
+        val x = i * stepX
+        val y = h - (((weight - minVal) / span) * (h * 0.8f) + (h * 0.1f)).toFloat()
+        val offset = Offset(x, y)
+        coords.add(offset)
+        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+      }
+
+      // Draw connection line
+      drawPath(
+        path = path,
+        color = Color(0xFFD4D8E2),
+        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+      )
+
+      // Draw points
+      coords.forEachIndexed { idx, pt ->
+        val isOverload = points[idx].isOverloadComparedToPrevious
+        drawCircle(
+          color = if (isOverload) Color(0xFF86EFAC) else Color(0xFFCBD2DE),
+          radius = 4.5.dp.toPx(),
+          center = pt
+        )
+        drawCircle(
+          color = Color(0xFF0C0D12),
+          radius = 2.dp.toPx(),
+          center = pt
+        )
+      }
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// BODY WEIGHT CANVAS CHART
+// -------------------------------------------------------------
+@Composable
+private fun BodyWeightCanvasChart(
+  logs: List<BodyWeightLog>,
+  useLbs: Boolean,
+  modifier: Modifier = Modifier
+) {
+  Box(
+    modifier = modifier
+      .background(Color(0xFF0C0D12), RoundedCornerShape(12.dp))
+      .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+      .padding(horizontal = 14.dp, vertical = 12.dp)
+  ) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+      val w = size.width
+      val h = size.height
+
+      val weights = logs.map { if (useLbs) it.weightKg * 2.20462 else it.weightKg }
+      val minVal = weights.minOrNull() ?: 60.0
+      val maxVal = weights.maxOrNull() ?: 90.0
+      val span = (maxVal - minVal).coerceAtLeast(1.0)
+
+      val stepX = w / (logs.size - 1).coerceAtLeast(1)
+
+      for (i in 0..3) {
+        val y = h * (i / 3f)
+        drawLine(
+          color = Color(0xFF1F222B),
+          start = Offset(0f, y),
+          end = Offset(w, y),
+          strokeWidth = 1f
+        )
+      }
+
+      val path = Path()
+      val coords = mutableListOf<Offset>()
+
+      logs.forEachIndexed { i, l ->
+        val weight = if (useLbs) l.weightKg * 2.20462 else l.weightKg
+        val x = i * stepX
+        val y = h - (((weight - minVal) / span) * (h * 0.75f) + (h * 0.12f)).toFloat()
+        val offset = Offset(x, y)
+        coords.add(offset)
+        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+      }
+
+      drawPath(
+        path = path,
+        color = Color(0xFF9CA3AF),
+        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+      )
+
+      coords.forEach { pt ->
+        drawCircle(
+          color = Color.White,
+          radius = 4.dp.toPx(),
+          center = pt
+        )
+        drawCircle(
+          color = Color(0xFF0C0D12),
+          radius = 1.8.dp.toPx(),
+          center = pt
+        )
+      }
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// LOG BODY WEIGHT DIALOG
+// -------------------------------------------------------------
+@Composable
+private fun LogBodyWeightDialog(
+  useLbs: Boolean,
+  onSaveWeight: (Double) -> Unit,
+  onDismiss: () -> Unit
+) {
+  var weightInput by remember { mutableStateOf(if (useLbs) "172.0" else "78.0") }
+
+  Dialog(onDismissRequest = onDismiss) {
+    Card(
+      shape = RoundedCornerShape(16.dp),
+      colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+      border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(6.dp)
+        .testTag("log_body_weight_dialog")
+    ) {
+      Column(modifier = Modifier.padding(18.dp)) {
         Row(
           modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceBetween
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
         ) {
-          val labelsToShow = if (dates.size <= 5) dates else listOf(
-            dates.first(),
-            dates[dates.size / 2],
-            dates.last()
-          )
-          labelsToShow.forEach { d ->
-            Text(text = d, color = Color(0xFF64748B), fontSize = 10.sp)
-          }
-        }
-      }
-    }
-  }
-}
-
-@Composable
-private fun HypertrophyMuscleDistributionCard(
-  workouts: List<WorkoutWithExercises>
-) {
-  val muscleTallies = remember(workouts) {
-    val counts = mutableMapOf(
-      "Chest" to 0,
-      "Back" to 0,
-      "Legs" to 0,
-      "Shoulders" to 0,
-      "Arms" to 0,
-      "Core" to 0
-    )
-    workouts.forEach { w ->
-      w.exercises.forEach { ex ->
-        val cat = when (ex.exercise.category.lowercase(Locale.ROOT)) {
-          "chest" -> "Chest"
-          "back" -> "Back"
-          "legs" -> "Legs"
-          "shoulders" -> "Shoulders"
-          "arms" -> "Arms"
-          "core" -> "Core"
-          else -> "Chest"
-        }
-        val sets = ex.sets.count { it.isCompleted }
-        counts[cat] = (counts[cat] ?: 0) + sets
-      }
-    }
-    counts
-  }
-
-  val maxSets = (muscleTallies.values.maxOrNull() ?: 20).coerceAtLeast(15)
-
-  Card(
-    shape = RoundedCornerShape(16.dp),
-    colors = CardDefaults.cardColors(containerColor = Color(0xFF12141C)),
-    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF242838)),
-    modifier = Modifier
-      .fillMaxWidth()
-      .testTag("hypertrophy_distribution_card")
-  ) {
-    Column(modifier = Modifier.padding(16.dp)) {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Column {
           Text(
-            text = "MUSCLE GROUP VOLUME",
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
+            text = "LOG BODY WEIGHT",
             fontSize = 13.sp,
-            letterSpacing = 0.5.sp
+            fontWeight = FontWeight.Bold,
+            color = TitaniumWhite,
+            letterSpacing = 1.sp
           )
-          Text(
-            text = "Working sets completed per target area",
-            color = Color(0xFF94A3B8),
-            fontSize = 11.sp
-          )
-        }
-        Icon(Icons.Default.FitnessCenter, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
-      }
-
-      Spacer(modifier = Modifier.height(14.dp))
-
-      muscleTallies.forEach { (muscle, setCount) ->
-        val fraction = (setCount.toFloat() / maxSets).coerceIn(0f, 1f)
-        val inOptimalRange = setCount in 10..22
-
-        Column(modifier = Modifier.padding(vertical = 4.dp)) {
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-          ) {
-            Text(
-              text = muscle,
-              fontWeight = FontWeight.Medium,
-              color = Color.White,
-              fontSize = 12.sp
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              Text(
-                text = "$setCount sets",
-                fontWeight = FontWeight.SemiBold,
-                color = if (inOptimalRange) VoltLime else Color(0xFF94A3B8),
-                fontSize = 12.sp
-              )
-              if (inOptimalRange) {
-                Spacer(modifier = Modifier.width(6.dp))
-                Surface(
-                  shape = RoundedCornerShape(4.dp),
-                  color = Color(0xFF1B2313)
-                ) {
-                  Text(
-                    text = "Optimal",
-                    color = VoltLime,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                  )
-                }
-              }
-            }
-          }
-
-          Spacer(modifier = Modifier.height(4.dp))
-
-          Box(
-            modifier = Modifier
-              .fillMaxWidth()
-              .height(6.dp)
-              .background(Color(0xFF1A1D29), RoundedCornerShape(3.dp))
-          ) {
-            Box(
-              modifier = Modifier
-                .fillMaxWidth(fraction)
-                .height(6.dp)
-                .background(
-                  color = if (inOptimalRange) VoltLime else Color(0xFF38BDF8),
-                  shape = RoundedCornerShape(3.dp)
-                )
-            )
+          IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
           }
         }
-      }
-    }
-  }
-}
 
-@Composable
-private fun PrProgressionCard(
-  prs: List<ExercisePr>,
-  useLbs: Boolean
-) {
-  Card(
-    shape = RoundedCornerShape(16.dp),
-    colors = CardDefaults.cardColors(containerColor = Color(0xFF12141C)),
-    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF242838)),
-    modifier = Modifier
-      .fillMaxWidth()
-      .testTag("pr_progression_card")
-  ) {
-    Column(modifier = Modifier.padding(16.dp)) {
-      Text(
-        text = "ESTIMATED 1RM BENCHMARKS",
-        fontWeight = FontWeight.Bold,
-        color = Color.White,
-        fontSize = 13.sp,
-        letterSpacing = 0.5.sp
-      )
-      Text(
-        text = "Calculated strength ceiling via Brzycki formula",
-        color = Color(0xFF94A3B8),
-        fontSize = 11.sp
-      )
+        Spacer(modifier = Modifier.height(14.dp))
 
-      Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+          value = weightInput,
+          onValueChange = { weightInput = it },
+          label = { Text("Weight (${if (useLbs) "lbs" else "kg"})", color = TextSecondary, fontSize = 11.sp) },
+          singleLine = true,
+          shape = RoundedCornerShape(10.dp),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = CardDark,
+            unfocusedContainerColor = CardDark,
+            focusedBorderColor = TitaniumWhite,
+            unfocusedBorderColor = BorderSubtle,
+            focusedTextColor = TextPrimary,
+            unfocusedTextColor = TextPrimary
+          ),
+          modifier = Modifier.fillMaxWidth()
+        )
 
-      val keyLifts = listOf(
-        "Barbell Bench Press",
-        "Barbell Back Squat",
-        "Barbell Deadlift",
-        "Overhead Barbell Press"
-      )
+        Spacer(modifier = Modifier.height(18.dp))
 
-      keyLifts.forEach { liftName ->
-        val pr = prs.find { it.exerciseName.equals(liftName, ignoreCase = true) }
-        val display1Rm = if (pr != null) {
-          if (useLbs) "${(pr.estimated1RmKg * 2.20462).roundToInt()} lbs"
-          else "${pr.estimated1RmKg} kg"
-        } else "—"
-
-        val displayActual = if (pr != null) {
-          if (useLbs) "${(pr.weightKg * 2.20462).roundToInt()} lbs × ${pr.reps}"
-          else "${pr.weightKg} kg × ${pr.reps}"
-        } else "No record"
-
-        Surface(
-          shape = RoundedCornerShape(8.dp),
-          color = Color(0xFF161924),
-          border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF242838)),
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp)
+        Button(
+          onClick = {
+            val parsed = weightInput.toDoubleOrNull() ?: 75.0
+            onSaveWeight(parsed)
+          },
+          colors = ButtonDefaults.buttonColors(
+            containerColor = TitaniumWhite,
+            contentColor = MatteBlack
+          ),
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier.fillMaxWidth().height(44.dp)
         ) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Column {
-              Text(
-                text = liftName,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-                fontSize = 12.sp
-              )
-              Text(
-                text = "Best: $displayActual",
-                color = Color(0xFF7B829A),
-                fontSize = 11.sp
-              )
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-              Text(
-                text = display1Rm,
-                fontWeight = FontWeight.Bold,
-                color = VoltLime,
-                fontSize = 14.sp
-              )
-              Text(
-                text = "Est. 1RM",
-                color = Color(0xFF64748B),
-                fontSize = 9.sp
-              )
-            }
-          }
+          Text("SAVE WEIGHT ENTRY", fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
       }
     }

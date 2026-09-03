@@ -270,4 +270,110 @@ class GeminiService {
       null
     }
   }
+
+  suspend fun chatWithTrainerJJ(
+    userMessage: String,
+    historyContext: String,
+    lifterProfile: String,
+    recentWorkoutSummary: String,
+    isOnline: Boolean
+  ): Pair<String, List<String>> = withContext(Dispatchers.IO) {
+    if (!isOnline || !isKeyConfigured) {
+      return@withContext getOfflineTrainerResponse(userMessage, lifterProfile)
+    }
+
+    try {
+      val prompt = """
+        You are "JIIM AI", an elite gym coach, biomechanics specialist, and hypertrophy trainer inside the JIIM app.
+        Your tone is motivating, sharp, scientific, and athletic. You talk like a seasoned lifter and coach (concise, high impact, no fluff).
+        
+        CRITICAL MANDATE:
+        - The lifter specifically expects you to ask questions often to gather as much insight as possible into their recovery, sleep, muscle soreness, joint health, and lifting goals.
+        - Give direct, actionable lifting/nutrition advice.
+        - ALWAYS end your response with 1-2 targeted questions to extract more insights about their training, fatigue, or form.
+        
+        Lifter Profile:
+        $lifterProfile
+        
+        Recent Workouts History:
+        $recentWorkoutSummary
+        
+        Previous Conversation:
+        $historyContext
+        
+        Lifter says:
+        "$userMessage"
+        
+        Respond with a JSON object:
+        {
+          "coachReply": "your direct answer followed by 1-2 probing coach questions",
+          "suggestedFollowUps": ["Short quick reply chip 1", "Short quick reply chip 2", "Short quick reply chip 3"]
+        }
+      """.trimIndent()
+
+      val rawJson = callGemini(prompt)
+      if (rawJson != null) {
+        try {
+          val obj = JSONObject(rawJson)
+          val reply = obj.optString("coachReply", "")
+          val followUps = mutableListOf<String>()
+          val arr = obj.optJSONArray("suggestedFollowUps")
+          if (arr != null) {
+            for (i in 0 until arr.length()) {
+              followUps.add(arr.getString(i))
+            }
+          }
+          if (reply.isNotBlank()) {
+            return@withContext Pair(reply, followUps)
+          }
+        } catch (_: Exception) {}
+      }
+    } catch (e: Exception) {
+      Log.e("GeminiService", "JIIM AI chat error", e)
+    }
+
+    getOfflineTrainerResponse(userMessage, lifterProfile)
+  }
+
+  private fun getOfflineTrainerResponse(userMessage: String, lifterProfile: String): Pair<String, List<String>> {
+    val lower = userMessage.lowercase()
+    return when {
+      lower.contains("sleep") || lower.contains("recover") || lower.contains("rest") -> {
+        Pair(
+          "Sleep is your primary anabolic window—growth hormone peak occurs in slow-wave sleep. If you get under 7 hours, your nervous system recovery drops by 30%, which directly impacts 1RM bench and squat stability.\n\nJIIM AI's Insight Question: How many hours did you log last night, and which muscle group feels the most sore or inflamed right now?",
+          listOf("Slept 7-8 hours, ready", "Under 6 hours, fatigued", "Chest & front delts are sore", "Legs feel completely fried")
+        )
+      }
+      lower.contains("bench") || lower.contains("chest") -> {
+        Pair(
+          "For bench overload: Keep shoulder blades depressed and retracted into the pad, create full leg drive with heels planted, and tuck elbows at ~45° to recruit sternal pecs while protecting the rotator cuff. When stuck, adding a 1-second pause on the chest builds explosive bottom-end power.\n\nJIIM AI's Insight Question: What is your current working weight on bench press, and where in the movement do you usually fail (off the chest, or mid-way at lockout)?",
+          listOf("Stuck off the chest", "Lockout failure (triceps)", "Current bench is 80kg", "Shoulder hurts during press")
+        )
+      }
+      lower.contains("squat") || lower.contains("leg") -> {
+        Pair(
+          "On squats, ensure your ribcage is stacked over your pelvis with 360-degree intra-abdominal bracing. Drive knees out over your middle toes and maintain equal foot pressure across tripod contact points (big toe, pinky toe, heel).\n\nJIIM AI's Insight Question: Are you doing low-bar or high-bar squats, and do you feel any knee or hip tightness after leg day?",
+          listOf("High-bar Olympic style", "Low-bar powerlifting style", "Knees feel slightly stiff", "Quads are super sore")
+        )
+      }
+      lower.contains("protein") || lower.contains("diet") || lower.contains("calorie") || lower.contains("eat") -> {
+        Pair(
+          "To optimize muscle protein synthesis (MPS), aim for 1.8g to 2.2g of protein per kg of body weight, split across 3 to 5 meals. Each feeding should contain at least 2.5g to 3g of leucine to trigger mTOR activation.\n\nJIIM AI's Insight Question: Are you currently in a caloric surplus (bulking), a deficit (cutting), or eating at maintenance?",
+          listOf("Caloric surplus (bulking)", "Caloric deficit (cutting)", "Maintenance recomp", "Track my daily protein")
+        )
+      }
+      lower.contains("plateau") || lower.contains("stuck") -> {
+        Pair(
+          "Plateaus are usually caused by accumulated systemic fatigue or lack of targeted accessory stimulus. We can break it with micro-loading (+1kg per side), wave periodization (shifting from 3x8 to 5x5), or a deload week.\n\nJIIM AI's Insight Question: Which specific exercise has been stalled, and for how many weeks have the weights or reps stayed the same?",
+          listOf("Barbell Bench Press", "Overhead Barbell Press", "Barbell Back Squat", "Stalled for 3 weeks")
+        )
+      }
+      else -> {
+        Pair(
+          "I'm locked in as your coach. My goal is to optimize your biomechanics, volume management, and progressive overload so you make steady, injury-free gains every single week.\n\nJIIM AI's Insight Question: To dial in your program today: How is your energy level right now (1-10), and what muscle group are you hitting today?",
+          listOf("Energy is 8/10, hitting Chest", "Feeling 6/10, hitting Back/Pull", "Leg Day today", "Need a 10-minute warm-up")
+        )
+      }
+    }
+  }
 }

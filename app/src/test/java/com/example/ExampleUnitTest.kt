@@ -9,7 +9,7 @@ class ExampleUnitTest {
   @Test
   fun testOfflineRantParserBasic() {
     val rant = "Hit chest today: Bench press 85kg 3x8, Incline DB 32kg 10,10,8 reps, Lateral raises 14kg 4x15"
-    val parsed = OfflineRantParser.parse(rant)
+    val parsed = OfflineRantParser.parseRant(rant)
 
     assertTrue(parsed.exercises.isNotEmpty())
     val bench = parsed.exercises.find { it.exerciseName.contains("Bench", ignoreCase = true) }

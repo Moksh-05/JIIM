@@ -1,5 +1,6 @@
 package com.example.data
 
+import com.example.model.BodyWeightLog
 import com.example.model.ExerciseLibrary
 import com.example.model.ExerciseLog
 import com.example.model.ExercisePr
@@ -16,11 +17,13 @@ import kotlin.math.roundToInt
 class GymRepository(
   private val workoutDao: WorkoutDao,
   private val prDao: ExercisePrDao,
-  private val routineDao: RoutineDao
+  private val routineDao: RoutineDao,
+  private val bodyWeightDao: BodyWeightDao
 ) {
   val allWorkouts: Flow<List<WorkoutWithExercises>> = workoutDao.getAllWorkouts()
   val allPrs: Flow<List<ExercisePr>> = prDao.getAllPrs()
   val allRoutines: Flow<List<RoutineTemplate>> = routineDao.getAllRoutines()
+  val allBodyWeights: Flow<List<BodyWeightLog>> = bodyWeightDao.getAllBodyWeights()
 
   fun getWorkoutsBetween(startMillis: Long, endMillis: Long): Flow<List<WorkoutWithExercises>> {
     return workoutDao.getWorkoutsBetween(startMillis, endMillis)
@@ -158,5 +161,43 @@ class GymRepository(
 
   suspend fun deleteRoutine(id: Long) = withContext(Dispatchers.IO) {
     routineDao.deleteRoutine(id)
+  }
+
+  suspend fun logBodyWeight(weightKg: Double, dateMillis: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) {
+    bodyWeightDao.insertBodyWeight(
+      BodyWeightLog(
+        dateMillis = dateMillis,
+        weightKg = weightKg
+      )
+    )
+  }
+
+  suspend fun deleteBodyWeight(id: Long) = withContext(Dispatchers.IO) {
+    bodyWeightDao.deleteBodyWeight(id)
+  }
+
+  suspend fun deleteExerciseFromWorkout(exerciseLogId: Long, workoutSessionId: Long) = withContext(Dispatchers.IO) {
+    workoutDao.deleteExerciseLog(exerciseLogId)
+    val sessionWithEx = workoutDao.getWorkoutById(workoutSessionId)
+    if (sessionWithEx != null) {
+      if (sessionWithEx.exercises.isEmpty()) {
+        workoutDao.deleteWorkoutSession(workoutSessionId)
+      } else {
+        var totalVolume = 0.0
+        var totalSets = 0
+        sessionWithEx.exercises.forEach { ex ->
+          ex.sets.forEach { s ->
+            totalSets++
+            totalVolume += (s.weightKg * s.reps)
+          }
+        }
+        workoutDao.updateWorkoutSession(
+          sessionWithEx.session.copy(
+            totalVolumeKg = totalVolume,
+            totalSets = totalSets
+          )
+        )
+      }
+    }
   }
 }

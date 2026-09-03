@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -47,22 +51,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.ExerciseDefinition
 import com.example.model.ExerciseLibrary
-import com.example.ui.theme.VoltLime
+import com.example.ui.theme.BorderHighlight
+import com.example.ui.theme.BorderSubtle
+import com.example.ui.theme.CardDark
+import com.example.ui.theme.CardElevated
+import com.example.ui.theme.MatteBlack
+import com.example.ui.theme.SurfaceDark
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.TitaniumSilver
+import com.example.ui.theme.TitaniumWhite
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExerciseSelectorDialog(
   onDismiss: () -> Unit,
-  onSelectExercise: (ExerciseDefinition) -> Unit
+  onSelectExercise: (ExerciseDefinition) -> Unit,
+  allAvailableExercises: List<ExerciseDefinition> = ExerciseLibrary.allExercises,
+  onAddNewCustomExercise: () -> Unit = {}
 ) {
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
   var searchQuery by remember { mutableStateOf("") }
   var selectedCategory by remember { mutableStateOf("All") }
 
-  val categories = listOf("All", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core")
+  val categories = listOf("All", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body")
 
-  val filteredExercises = remember(searchQuery, selectedCategory) {
-    ExerciseLibrary.allExercises.filter { def ->
+  val filteredExercises = remember(searchQuery, selectedCategory, allAvailableExercises) {
+    allAvailableExercises.filter { def ->
       val matchesCat = selectedCategory == "All" || def.category.equals(selectedCategory, ignoreCase = true)
       val matchesSearch = searchQuery.isBlank() || def.name.contains(searchQuery, ignoreCase = true) ||
         def.primaryMuscle.contains(searchQuery, ignoreCase = true)
@@ -73,8 +88,8 @@ fun ExerciseSelectorDialog(
   ModalBottomSheet(
     onDismissRequest = onDismiss,
     sheetState = sheetState,
-    containerColor = Color(0xFF101723),
-    tonalElevation = 6.dp
+    containerColor = MatteBlack,
+    tonalElevation = 8.dp
   ) {
     Column(
       modifier = Modifier
@@ -82,17 +97,46 @@ fun ExerciseSelectorDialog(
         .fillMaxHeight(0.85f)
         .padding(horizontal = 20.dp, vertical = 8.dp)
     ) {
-      Text(
-        text = "Add Exercise",
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.Bold,
-        color = Color.White
-      )
-      Text(
-        text = "Choose from the library or create a custom lift",
-        style = MaterialTheme.typography.bodySmall,
-        color = Color(0xFF94A3B8)
-      )
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column {
+          Text(
+            text = "Select Exercise",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
+          )
+          Text(
+            text = "${allAvailableExercises.size} exercises in your library",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary
+          )
+        }
+
+        // Dedicated in-built Add Custom Exercise Button
+        Surface(
+          onClick = {
+            onDismiss()
+            onAddNewCustomExercise()
+          },
+          shape = RoundedCornerShape(12.dp),
+          color = SurfaceDark,
+          border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+          modifier = Modifier.testTag("open_add_custom_exercise_btn")
+        ) {
+          Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Icon(Icons.Default.Add, contentDescription = null, tint = TitaniumWhite, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("+ Custom", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TitaniumWhite)
+          }
+        }
+      }
 
       Spacer(modifier = Modifier.height(14.dp))
 
@@ -100,18 +144,18 @@ fun ExerciseSelectorDialog(
       OutlinedTextField(
         value = searchQuery,
         onValueChange = { searchQuery = it },
-        placeholder = { Text("Search exercise (e.g. Bench, Squat)", color = Color(0xFF64748B)) },
+        placeholder = { Text("Search by name or muscle (e.g. Bench, Squat)", color = TextSecondary) },
         leadingIcon = {
-          Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF94A3B8))
+          Icon(Icons.Default.Search, contentDescription = "Search", tint = TitaniumSilver)
         },
         singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
-          focusedContainerColor = Color(0xFF172233),
-          unfocusedContainerColor = Color(0xFF172233),
-          focusedBorderColor = VoltLime,
-          unfocusedBorderColor = Color(0xFF2B3A52),
-          focusedTextColor = Color.White,
-          unfocusedTextColor = Color.White
+          focusedContainerColor = CardDark,
+          unfocusedContainerColor = CardDark,
+          focusedBorderColor = TitaniumWhite,
+          unfocusedBorderColor = BorderSubtle,
+          focusedTextColor = TextPrimary,
+          unfocusedTextColor = TextPrimary
         ),
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier
@@ -128,42 +172,45 @@ fun ExerciseSelectorDialog(
       ) {
         items(categories) { category ->
           val isSelected = selectedCategory == category
-          Surface(
-            onClick = { selectedCategory = category },
-            shape = RoundedCornerShape(12.dp),
-            color = if (isSelected) VoltLime else Color(0xFF1B2638),
-            modifier = Modifier.testTag("category_chip_$category")
+          Box(
+            modifier = Modifier
+              .clip(RoundedCornerShape(10.dp))
+              .background(if (isSelected) TitaniumWhite else CardDark)
+              .border(
+                width = 1.dp,
+                color = if (isSelected) TitaniumWhite else BorderSubtle,
+                shape = RoundedCornerShape(10.dp)
+              )
+              .clickable { selectedCategory = category }
+              .padding(horizontal = 14.dp, vertical = 7.dp)
+              .testTag("category_chip_$category")
           ) {
             Text(
               text = category,
               style = MaterialTheme.typography.labelMedium,
-              color = if (isSelected) Color.Black else Color.White,
-              fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-              modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+              color = if (isSelected) MatteBlack else TextSecondary,
+              fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
             )
           }
         }
       }
 
-      Spacer(modifier = Modifier.height(16.dp))
+      Spacer(modifier = Modifier.height(14.dp))
 
-      // Custom exercise creation option if search query doesn't match fully
+      // Quick add if search query doesn't match
       if (searchQuery.isNotBlank() && filteredExercises.none { it.name.equals(searchQuery.trim(), ignoreCase = true) }) {
         Card(
           onClick = {
-            val custom = ExerciseDefinition(
-              name = searchQuery.trim(),
-              category = if (selectedCategory == "All") "Custom" else selectedCategory,
-              primaryMuscle = "Target Muscle"
-            )
-            onSelectExercise(custom)
+            onDismiss()
+            onAddNewCustomExercise()
           },
-          colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2B3E)),
+          colors = CardDefaults.cardColors(containerColor = CardElevated),
+          border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
           shape = RoundedCornerShape(14.dp),
           modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp)
-            .testTag("add_custom_exercise_card")
+            .testTag("add_custom_exercise_prompt")
         ) {
           Row(
             modifier = Modifier
@@ -173,23 +220,25 @@ fun ExerciseSelectorDialog(
           ) {
             Box(
               modifier = Modifier
-                .size(40.dp)
-                .background(VoltLime.copy(alpha = 0.2f), CircleShape),
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(SurfaceDark)
+                .border(1.dp, BorderSubtle, CircleShape),
               contentAlignment = Alignment.Center
             ) {
-              Icon(Icons.Default.Add, contentDescription = null, tint = VoltLime)
+              Icon(Icons.Default.Add, contentDescription = null, tint = TitaniumWhite)
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
               Text(
                 text = "Add \"${searchQuery.trim()}\"",
                 fontWeight = FontWeight.Bold,
-                color = VoltLime,
+                color = TitaniumWhite,
                 fontSize = 15.sp
               )
               Text(
-                text = "Create custom exercise entry",
-                color = Color(0xFF94A3B8),
+                text = "Tap to save directly into your custom exercises",
+                color = TextSecondary,
                 fontSize = 12.sp
               )
             }
@@ -207,7 +256,8 @@ fun ExerciseSelectorDialog(
         items(filteredExercises) { exercise ->
           Card(
             onClick = { onSelectExercise(exercise) },
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF151E2B)),
+            colors = CardDefaults.cardColors(containerColor = CardDark),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier
               .fillMaxWidth()
@@ -222,13 +272,13 @@ fun ExerciseSelectorDialog(
               Box(
                 modifier = Modifier
                   .size(38.dp)
-                  .background(Color(0xFF223046), CircleShape),
+                  .clip(CircleShape)
+                  .background(SurfaceDark)
+                  .border(1.dp, BorderSubtle, CircleShape),
                 contentAlignment = Alignment.Center
               ) {
-                Icon(
-                  Icons.Default.FitnessCenter,
-                  contentDescription = null,
-                  tint = VoltLime,
+                MinimalDumbbellIcon(
+                  tint = TitaniumSilver,
                   modifier = Modifier.size(18.dp)
                 )
               }
@@ -239,12 +289,12 @@ fun ExerciseSelectorDialog(
                 Text(
                   text = exercise.name,
                   fontWeight = FontWeight.Bold,
-                  color = Color.White,
+                  color = TextPrimary,
                   fontSize = 15.sp
                 )
                 Text(
                   text = "${exercise.category} • ${exercise.primaryMuscle}",
-                  color = Color(0xFF94A3B8),
+                  color = TextSecondary,
                   fontSize = 12.sp
                 )
               }
@@ -252,7 +302,7 @@ fun ExerciseSelectorDialog(
               Icon(
                 Icons.Default.Add,
                 contentDescription = "Select",
-                tint = VoltLime,
+                tint = TitaniumSilver,
                 modifier = Modifier.size(20.dp)
               )
             }

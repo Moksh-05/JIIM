@@ -6,24 +6,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val GymDarkColorScheme = darkColorScheme(
-  primary = VoltLime,
-  onPrimary = Color(0xFF0D1300),
-  primaryContainer = Color(0xFF263300),
-  onPrimaryContainer = VoltLime,
-  secondary = ElectricCyan,
-  onSecondary = Color(0xFF001F24),
-  secondaryContainer = Color(0xFF00404A),
-  onSecondaryContainer = ElectricCyan,
-  tertiary = FlameOrange,
-  onTertiary = Color.White,
-  background = DarkObsidianBg,
-  onBackground = TextWhite,
-  surface = DarkSurface,
-  onSurface = TextWhite,
-  surfaceVariant = DarkCard,
-  onSurfaceVariant = TextMuted,
-  outline = DarkBorder,
-  outlineVariant = Color(0xFF1B2433)
+  primary = TitaniumWhite,
+  onPrimary = MatteBlack,
+  primaryContainer = CardElevated,
+  onPrimaryContainer = TitaniumWhite,
+  secondary = TitaniumSilver,
+  onSecondary = MatteBlack,
+  secondaryContainer = CardDark,
+  onSecondaryContainer = TitaniumSilver,
+  tertiary = PlatinumSteel,
+  onTertiary = MatteBlack,
+  background = MatteBlack,
+  onBackground = TextPrimary,
+  surface = SurfaceDark,
+  onSurface = TextPrimary,
+  surfaceVariant = CardDark,
+  onSurfaceVariant = TextSecondary,
+  outline = BorderSubtle,
+  outlineVariant = BorderHighlight
 )
 
 @Composable
