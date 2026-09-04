@@ -5,11 +5,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.AppUpdateManager
 import com.example.data.GeminiService
 import com.example.data.GymDatabase
 import com.example.data.GymRepository
 import com.example.data.NetworkMonitor
 import com.example.data.OfflineProgressAnalyzer
+import com.example.data.ReleaseUpdateInfo
+import com.example.data.UpdateCheckState
 import com.example.model.AiProgressAnalysis
 import com.example.model.BodyWeightLog
 import com.example.model.DailyWorkoutSummary
@@ -26,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -92,9 +96,52 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   private val geminiService = GeminiService()
   private val networkMonitor = NetworkMonitor(application)
   private val userProfileManager = com.example.data.UserProfileManager(application)
+  private val appUpdateManager = AppUpdateManager(application)
 
   val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), networkMonitor.checkCurrentOnline())
+
+  // App Update State (GitHub Releases Moksh-05/JIIM)
+  private val _updateCheckState = MutableStateFlow<UpdateCheckState>(UpdateCheckState.Idle)
+  val updateCheckState: StateFlow<UpdateCheckState> = _updateCheckState.asStateFlow()
+  val currentAppVersion: String get() = appUpdateManager.currentVersionName
+
+  fun checkForAppUpdates() {
+    viewModelScope.launch {
+      _updateCheckState.value = UpdateCheckState.Checking
+      val release = appUpdateManager.checkForUpdates()
+      if (release == null) {
+        _updateCheckState.value = UpdateCheckState.Error("Could not reach GitHub releases or no release found in Moksh-05/JIIM.")
+      } else if (release.isUpdateAvailable) {
+        _updateCheckState.value = UpdateCheckState.Available(release)
+      } else {
+        _updateCheckState.value = UpdateCheckState.UpToDate(appUpdateManager.currentVersionName)
+      }
+    }
+  }
+
+  fun downloadAndInstallUpdate(info: ReleaseUpdateInfo) {
+    viewModelScope.launch {
+      _updateCheckState.value = UpdateCheckState.Downloading(0, 0L, info.apkSizeBytes)
+      val file = appUpdateManager.downloadApk(info.apkDownloadUrl) { percent, down, total ->
+        _updateCheckState.value = UpdateCheckState.Downloading(percent, down, total)
+      }
+      if (file != null && file.exists()) {
+        _updateCheckState.value = UpdateCheckState.ReadyToInstall(file)
+        appUpdateManager.installApk(file)
+      } else {
+        _updateCheckState.value = UpdateCheckState.Error("Failed to download APK from GitHub release.")
+      }
+    }
+  }
+
+  fun installDownloadedApk(file: File) {
+    appUpdateManager.installApk(file)
+  }
+
+  fun resetUpdateState() {
+    _updateCheckState.value = UpdateCheckState.Idle
+  }
 
   // User Profile, Custom Exercises & Dashboard Customization
   val userProfile: StateFlow<com.example.data.UserProfile> = userProfileManager.profile
@@ -386,9 +433,63 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
+  fun deleteAllWorkouts() {
+    viewModelScope.launch {
+      repository.deleteAllWorkouts()
+      runProgressAnalysis()
+    }
+  }
+
+  fun deletePr(exerciseName: String) {
+    viewModelScope.launch {
+      repository.deletePr(exerciseName)
+      runProgressAnalysis()
+    }
+  }
+
+  fun deleteAllPrs() {
+    viewModelScope.launch {
+      repository.deleteAllPrs()
+      runProgressAnalysis()
+    }
+  }
+
   fun deleteBodyWeight(id: Long) {
     viewModelScope.launch {
       repository.deleteBodyWeight(id)
+    }
+  }
+
+  fun deleteAllBodyWeights() {
+    viewModelScope.launch {
+      repository.deleteAllBodyWeights()
+    }
+  }
+
+  fun deleteAllCustomExercises() {
+    userProfileManager.clearAllCustomExercises()
+  }
+
+  fun deleteRoutine(id: Long) {
+    viewModelScope.launch {
+      repository.deleteRoutine(id)
+    }
+  }
+
+  fun deleteAllRoutines() {
+    viewModelScope.launch {
+      repository.deleteAllRoutines()
+    }
+  }
+
+  fun clearAllData(includeCustomExercises: Boolean = false) {
+    viewModelScope.launch {
+      repository.clearAllData()
+      if (includeCustomExercises) {
+        userProfileManager.clearAllCustomExercises()
+      }
+      resetTrainerChat()
+      _aiAnalysis.value = null
     }
   }
 
@@ -400,10 +501,13 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   // -------------------------------------------------------------
-  // RAMBLER PARSING & CLARIFICATION
+  // RAMBLER PARSING & CLARIFICATION (BULK MULTI-WORKOUT SUPPORT)
   // -------------------------------------------------------------
   private val _isParsingRant = MutableStateFlow(false)
   val isParsingRant: StateFlow<Boolean> = _isParsingRant.asStateFlow()
+
+  private val _parsedRants = MutableStateFlow<List<ParsedWorkoutRant>>(emptyList())
+  val parsedRants: StateFlow<List<ParsedWorkoutRant>> = _parsedRants.asStateFlow()
 
   private val _parsedRant = MutableStateFlow<ParsedWorkoutRant?>(null)
   val parsedRant: StateFlow<ParsedWorkoutRant?> = _parsedRant.asStateFlow()
@@ -416,34 +520,38 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
     viewModelScope.launch {
       _isParsingRant.value = true
       try {
-        val result = geminiService.parseGymRant(rantText, isOnline.value)
-        _parsedRant.value = result
+        val results = geminiService.parseGymRants(rantText, isOnline.value)
+        _parsedRants.value = results
+        _parsedRant.value = results.firstOrNull()
 
         val needed = mutableListOf<RamblerClarification>()
-        result.exercises.forEachIndexed { idx, ex ->
-          val zeroWeightSets = ex.sets.filter { it.weightKg <= 0.0 }
-          val zeroRepSets = ex.sets.filter { it.reps <= 0 }
+        results.forEachIndexed { rIdx, rant ->
+          val datePrefix = rant.dateDisplay?.takeIf { it.isNotBlank() }?.let { "[$it] " } ?: ""
+          rant.exercises.forEachIndexed { idx, ex ->
+            val zeroWeightSets = ex.sets.filter { it.weightKg <= 0.0 }
+            val zeroRepSets = ex.sets.filter { it.reps <= 0 }
 
-          if (zeroWeightSets.isNotEmpty()) {
-            needed.add(
-              RamblerClarification(
-                exerciseIndex = idx,
-                exerciseName = ex.exerciseName,
-                question = "What weight did you use for ${ex.exerciseName}?",
-                initialWeightKg = 0.0,
-                initialReps = ex.sets.firstOrNull()?.reps ?: 10
+            if (zeroWeightSets.isNotEmpty()) {
+              needed.add(
+                RamblerClarification(
+                  exerciseIndex = idx,
+                  exerciseName = ex.exerciseName,
+                  question = "${datePrefix}What weight did you use for ${ex.exerciseName}?",
+                  initialWeightKg = 0.0,
+                  initialReps = ex.sets.firstOrNull()?.reps ?: 10
+                )
               )
-            )
-          } else if (zeroRepSets.isNotEmpty()) {
-            needed.add(
-              RamblerClarification(
-                exerciseIndex = idx,
-                exerciseName = ex.exerciseName,
-                question = "How many reps did you complete for ${ex.exerciseName}?",
-                initialWeightKg = ex.sets.firstOrNull()?.weightKg ?: 20.0,
-                initialReps = 10
+            } else if (zeroRepSets.isNotEmpty()) {
+              needed.add(
+                RamblerClarification(
+                  exerciseIndex = idx,
+                  exerciseName = ex.exerciseName,
+                  question = "${datePrefix}How many reps did you complete for ${ex.exerciseName}?",
+                  initialWeightKg = ex.sets.firstOrNull()?.weightKg ?: 20.0,
+                  initialReps = 10
+                )
               )
-            )
+            }
           }
         }
         _clarifications.value = needed
@@ -454,23 +562,48 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   fun updateClarification(exerciseIndex: Int, newWeightKg: Double, newReps: Int) {
-    val rant = _parsedRant.value ?: return
-    val updatedExercises = rant.exercises.toMutableList()
-    if (exerciseIndex in updatedExercises.indices) {
-      val ex = updatedExercises[exerciseIndex]
-      val updatedSets = ex.sets.map { s ->
-        s.copy(
-          weightKg = if (s.weightKg <= 0) newWeightKg else s.weightKg,
-          reps = if (s.reps <= 0) newReps else s.reps
-        )
+    val currentRants = _parsedRants.value.toMutableList()
+    if (currentRants.isNotEmpty()) {
+      // Update first rant or any matching
+      val rant = currentRants[0]
+      val updatedExercises = rant.exercises.toMutableList()
+      if (exerciseIndex in updatedExercises.indices) {
+        val ex = updatedExercises[exerciseIndex]
+        val updatedSets = ex.sets.map { s ->
+          s.copy(
+            weightKg = if (s.weightKg <= 0) newWeightKg else s.weightKg,
+            reps = if (s.reps <= 0) newReps else s.reps
+          )
+        }
+        updatedExercises[exerciseIndex] = ex.copy(sets = updatedSets)
+        currentRants[0] = rant.copy(exercises = updatedExercises)
+        _parsedRants.value = currentRants
+        _parsedRant.value = currentRants.firstOrNull()
       }
-      updatedExercises[exerciseIndex] = ex.copy(sets = updatedSets)
-      _parsedRant.value = rant.copy(exercises = updatedExercises)
     }
     _clarifications.value = _clarifications.value.filterNot { it.exerciseIndex == exerciseIndex }
   }
 
+  fun updateRantAt(index: Int, updated: ParsedWorkoutRant) {
+    val list = _parsedRants.value.toMutableList()
+    if (index in list.indices) {
+      list[index] = updated
+      _parsedRants.value = list
+      _parsedRant.value = list.firstOrNull()
+    }
+  }
+
+  fun removeRantAt(index: Int) {
+    val list = _parsedRants.value.toMutableList()
+    if (index in list.indices) {
+      list.removeAt(index)
+      _parsedRants.value = list
+      _parsedRant.value = list.firstOrNull()
+    }
+  }
+
   fun clearParsedRant() {
+    _parsedRants.value = emptyList()
     _parsedRant.value = null
     _clarifications.value = emptyList()
   }
@@ -478,6 +611,19 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   fun saveLoggedWorkout(rant: ParsedWorkoutRant) {
     viewModelScope.launch {
       repository.saveLoggedWorkout(rant)
+      _parsedRants.value = emptyList()
+      _parsedRant.value = null
+      _clarifications.value = emptyList()
+      runProgressAnalysis()
+    }
+  }
+
+  fun saveAllLoggedWorkouts(rants: List<ParsedWorkoutRant>) {
+    viewModelScope.launch {
+      for (r in rants) {
+        repository.saveLoggedWorkout(r)
+      }
+      _parsedRants.value = emptyList()
       _parsedRant.value = null
       _clarifications.value = emptyList()
       runProgressAnalysis()

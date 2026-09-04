@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -110,6 +112,7 @@ fun WorkoutScreen(
   val workouts by viewModel.allWorkouts.collectAsState()
   val activeExercises by viewModel.activeExercises.collectAsState()
   val isParsingRant by viewModel.isParsingRant.collectAsState()
+  val parsedRants by viewModel.parsedRants.collectAsState()
   val parsedRant by viewModel.parsedRant.collectAsState()
   val clarifications by viewModel.clarifications.collectAsState()
   val isOnline by viewModel.isOnline.collectAsState()
@@ -159,16 +162,22 @@ fun WorkoutScreen(
   val (currStreak, _) = remember(workouts) { viewModel.computeStreaks(workouts) }
 
   // DIALOGS
-  if (parsedRant != null) {
-    RamblerReviewDialog(
-      parsed = parsedRant!!,
+  if (parsedRants.isNotEmpty()) {
+    MultiWorkoutRamblerDialog(
+      rants = parsedRants,
       clarifications = clarifications,
       useLbs = useLbs,
       onUpdateClarification = { idx, wt, reps ->
         viewModel.updateClarification(idx, wt, reps)
       },
-      onConfirm = { confirmedRant ->
-        viewModel.saveLoggedWorkout(confirmedRant)
+      onUpdateRant = { idx, updated ->
+        viewModel.updateRantAt(idx, updated)
+      },
+      onRemoveRant = { idx ->
+        viewModel.removeRantAt(idx)
+      },
+      onConfirmAll = { confirmedList ->
+        viewModel.saveAllLoggedWorkouts(confirmedList)
         ramblerInput = ""
       },
       onDismiss = { viewModel.clearParsedRant() }
@@ -1082,14 +1091,14 @@ fun WorkoutScreen(
             ) {
               Column {
                 Text(
-                  text = "THE RAMBLER",
+                  text = "THE RAMBLER (PAST & BULK LOGGING)",
                   fontSize = 13.sp,
                   fontWeight = FontWeight.Black,
                   letterSpacing = 1.sp,
                   color = TitaniumWhite
                 )
                 Text(
-                  text = "Type or dictate whatever you did in any order",
+                  text = "Type or paste 1 or multiple workouts separated by dates",
                   fontSize = 11.sp,
                   color = TextSecondary
                 )
@@ -1117,7 +1126,7 @@ fun WorkoutScreen(
               onValueChange = { ramblerInput = it },
               placeholder = {
                 Text(
-                  text = "e.g. Bench press 80kg 3 sets of 8 reps, then did lateral raises with 12kg dumbbells for 15 reps, felt great pump",
+                  text = "Enter as many workouts as you want, e.g.:\n\nAug 20: Bench press 80kg 3x8, Incline dumbbell 28kg 3x10\nAug 23: Pullups 4x10, Barbell Row 70kg 3x8\nYesterday: Squat 100kg 3x5, Leg Press 200kg 3x10",
                   color = TextSecondary,
                   fontSize = 12.sp,
                   lineHeight = 17.sp
@@ -1125,7 +1134,7 @@ fun WorkoutScreen(
               },
               modifier = Modifier
                 .fillMaxWidth()
-                .height(120.dp)
+                .height(145.dp)
                 .testTag("rambler_text_input"),
               shape = RoundedCornerShape(12.dp),
               colors = OutlinedTextFieldDefaults.colors(
@@ -1160,9 +1169,9 @@ fun WorkoutScreen(
               if (isParsingRant) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MatteBlack, strokeWidth = 2.dp)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("AI is extracting workout...", fontWeight = FontWeight.Bold)
+                Text("AI is extracting workouts...", fontWeight = FontWeight.Bold)
               } else {
-                Text("PARSE WORKOUT WITH AI", fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 0.5.sp)
+                Text("PARSE & SYNC WORKOUTS", fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 0.5.sp)
               }
             }
           }
@@ -1733,23 +1742,24 @@ private fun CompletedExerciseDetailDialog(
 }
 
 // -------------------------------------------------------------
-// RAMBLER REVIEW & CLARIFICATION DIALOG
+// MULTI-WORKOUT RAMBLER REVIEW & CLARIFICATION DIALOG
 // -------------------------------------------------------------
 @Composable
-private fun RamblerReviewDialog(
-  parsed: ParsedWorkoutRant,
+private fun MultiWorkoutRamblerDialog(
+  rants: List<ParsedWorkoutRant>,
   clarifications: List<com.example.viewmodel.RamblerClarification>,
   useLbs: Boolean,
   onUpdateClarification: (Int, Double, Int) -> Unit,
-  onConfirm: (ParsedWorkoutRant) -> Unit,
+  onUpdateRant: (Int, ParsedWorkoutRant) -> Unit,
+  onRemoveRant: (Int) -> Unit,
+  onConfirmAll: (List<ParsedWorkoutRant>) -> Unit,
   onDismiss: () -> Unit
 ) {
-  var workoutTitle by remember { mutableStateOf(parsed.workoutTitle) }
-  val exercisesList by remember { mutableStateOf(parsed.exercises) }
+  var workoutList by remember(rants) { mutableStateOf(rants) }
 
   Dialog(onDismissRequest = onDismiss) {
     Card(
-      shape = RoundedCornerShape(18.dp),
+      shape = RoundedCornerShape(20.dp),
       colors = CardDefaults.cardColors(containerColor = SurfaceDark),
       border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
       modifier = Modifier
@@ -1766,13 +1776,20 @@ private fun RamblerReviewDialog(
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically
         ) {
-          Text(
-            text = "REVIEW LOGGED SESSION",
-            fontWeight = FontWeight.Bold,
-            color = TitaniumWhite,
-            fontSize = 13.sp,
-            letterSpacing = 1.sp
-          )
+          Column {
+            Text(
+              text = if (workoutList.size > 1) "REVIEW ${workoutList.size} SESSIONS" else "REVIEW LOGGED SESSION",
+              fontWeight = FontWeight.Bold,
+              color = TitaniumWhite,
+              fontSize = 14.sp,
+              letterSpacing = 1.sp
+            )
+            Text(
+              text = "Extracted past workouts with dates & sets",
+              fontSize = 11.sp,
+              color = TextSecondary
+            )
+          }
 
           IconButton(onClick = onDismiss, modifier = Modifier.size(26.dp)) {
             Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
@@ -1781,6 +1798,7 @@ private fun RamblerReviewDialog(
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Clarifications section if AI detected missing weight or reps
         if (clarifications.isNotEmpty()) {
           Surface(
             shape = RoundedCornerShape(10.dp),
@@ -1792,7 +1810,7 @@ private fun RamblerReviewDialog(
               Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Warning, contentDescription = null, tint = PlatinumSteel, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Clarification Needed", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TitaniumWhite)
+                Text("AI Clarifications Needed", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TitaniumWhite)
               }
               Spacer(modifier = Modifier.height(6.dp))
               clarifications.forEach { cl ->
@@ -1831,63 +1849,117 @@ private fun RamblerReviewDialog(
           Spacer(modifier = Modifier.height(10.dp))
         }
 
-        OutlinedTextField(
-          value = workoutTitle,
-          onValueChange = { workoutTitle = it },
-          label = { Text("Workout Title", color = TextSecondary, fontSize = 11.sp) },
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = CardDark,
-            unfocusedContainerColor = CardDark,
-            focusedBorderColor = TitaniumWhite,
-            unfocusedBorderColor = BorderSubtle,
-            focusedTextColor = TextPrimary,
-            unfocusedTextColor = TextPrimary
-          ),
-          shape = RoundedCornerShape(10.dp),
-          modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Text(
-          text = "Detected Exercises (${exercisesList.size}):",
-          color = TextSecondary,
-          fontSize = 11.sp,
-          fontWeight = FontWeight.Medium
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
+        // List of all parsed workout sessions
         LazyColumn(
           modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp),
-          verticalArrangement = Arrangement.spacedBy(6.dp)
+            .heightIn(max = 380.dp),
+          verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-          items(exercisesList) { ex ->
+          itemsIndexed(workoutList) { index, rant ->
+            var currentTitle by remember(rant) { mutableStateOf(rant.workoutTitle) }
+
             Surface(
-              shape = RoundedCornerShape(8.dp),
+              shape = RoundedCornerShape(12.dp),
               color = CardDark,
               border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
               modifier = Modifier.fillMaxWidth()
             ) {
-              Column(modifier = Modifier.padding(10.dp)) {
-                Text(
-                  text = ex.exerciseName,
-                  fontWeight = FontWeight.Bold,
-                  color = TitaniumWhite,
-                  fontSize = 12.sp
+              Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  // Date Pill
+                  Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = SurfaceDark,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight)
+                  ) {
+                    Row(
+                      modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      Icon(Icons.Default.DateRange, contentDescription = null, tint = PlatinumSteel, modifier = Modifier.size(13.dp))
+                      Spacer(modifier = Modifier.width(5.dp))
+                      Text(
+                        text = rant.dateDisplay ?: "Past Workout",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TitaniumWhite
+                      )
+                    }
+                  }
+
+                  if (workoutList.size > 1) {
+                    IconButton(
+                      onClick = { onRemoveRant(index) },
+                      modifier = Modifier.size(24.dp)
+                    ) {
+                      Icon(Icons.Default.Delete, contentDescription = "Remove workout", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                    }
+                  }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                  value = currentTitle,
+                  onValueChange = {
+                    currentTitle = it
+                    val updated = rant.copy(workoutTitle = it)
+                    onUpdateRant(index, updated)
+                  },
+                  label = { Text("Workout Name", fontSize = 10.sp, color = TextSecondary) },
+                  singleLine = true,
+                  colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = SurfaceDark,
+                    unfocusedContainerColor = SurfaceDark,
+                    focusedBorderColor = TitaniumWhite,
+                    unfocusedBorderColor = BorderSubtle,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                  ),
+                  shape = RoundedCornerShape(8.dp),
+                  modifier = Modifier.fillMaxWidth().height(52.dp)
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                val setsSummary = ex.sets.mapIndexed { idx, s ->
-                  val wt = if (useLbs) (s.weightKg * 2.20462).toInt() else s.weightKg.toInt()
-                  "S${idx + 1}: ${wt}${if (useLbs) "lb" else "kg"} × ${s.reps}"
-                }.joinToString(", ")
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Text(
-                  text = setsSummary,
-                  color = TextSecondary,
-                  fontSize = 11.sp
+                  text = "${rant.exercises.size} Exercises Detected:",
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  color = TextSecondary
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                  rant.exercises.forEach { ex ->
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.SpaceBetween,
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      Text(
+                        text = ex.exerciseName,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TitaniumWhite
+                      )
+                      val setsSummary = ex.sets.mapIndexed { sIdx, s ->
+                        val wt = if (useLbs) (s.weightKg * 2.20462).toInt() else s.weightKg.toInt()
+                        "${wt}${if (useLbs) "lb" else "kg"}×${s.reps}"
+                      }.joinToString(", ")
+                      Text(
+                        text = setsSummary,
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                      )
+                    }
+                  }
+                }
               }
             }
           }
@@ -1913,12 +1985,7 @@ private fun RamblerReviewDialog(
 
           Button(
             onClick = {
-              onConfirm(
-                parsed.copy(
-                  workoutTitle = workoutTitle,
-                  exercises = exercisesList
-                )
-              )
+              onConfirmAll(workoutList)
             },
             colors = ButtonDefaults.buttonColors(
               containerColor = TitaniumWhite,
@@ -1926,13 +1993,38 @@ private fun RamblerReviewDialog(
             ),
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier
-              .weight(1.3f)
+              .weight(1.4f)
               .testTag("confirm_save_workout_button")
           ) {
-            Text("CONFIRM LOG", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text(
+              text = if (workoutList.size > 1) "SYNC ALL (${workoutList.size})" else "SYNC WORKOUT",
+              fontWeight = FontWeight.Bold,
+              fontSize = 12.sp
+            )
           }
         }
       }
     }
   }
+}
+
+@Composable
+private fun RamblerReviewDialog(
+  parsed: ParsedWorkoutRant,
+  clarifications: List<com.example.viewmodel.RamblerClarification>,
+  useLbs: Boolean,
+  onUpdateClarification: (Int, Double, Int) -> Unit,
+  onConfirm: (ParsedWorkoutRant) -> Unit,
+  onDismiss: () -> Unit
+) {
+  MultiWorkoutRamblerDialog(
+    rants = listOf(parsed),
+    clarifications = clarifications,
+    useLbs = useLbs,
+    onUpdateClarification = onUpdateClarification,
+    onUpdateRant = { _, updated -> onConfirm(updated) },
+    onRemoveRant = { onDismiss() },
+    onConfirmAll = { list -> list.firstOrNull()?.let { onConfirm(it) } },
+    onDismiss = onDismiss
+  )
 }

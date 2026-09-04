@@ -162,6 +162,11 @@ class UserProfileManager(context: Context) {
     saveCustomExercises(current)
   }
 
+  fun clearAllCustomExercises() {
+    _customExercises.value = emptyList()
+    saveCustomExercises(emptyList())
+  }
+
   fun getAllExercises(): List<ExerciseDefinition> {
     val custom = _customExercises.value
     val builtIn = ExerciseLibrary.allExercises

@@ -83,25 +83,78 @@ object OfflineRantParser {
   )
 
   fun parseRant(text: String): ParsedWorkoutRant {
+    val results = parseMultiWorkoutRant(text)
+    return results.firstOrNull() ?: ParsedWorkoutRant(
+      workoutTitle = "Quick Workout",
+      exercises = emptyList(),
+      notes = text.trim()
+    )
+  }
+
+  fun parseMultiWorkoutRant(text: String): List<ParsedWorkoutRant> {
     val clean = text.trim()
-    if (clean.isBlank()) {
-      return ParsedWorkoutRant(
-        workoutTitle = "Quick Workout",
-        exercises = emptyList(),
-        notes = ""
-      )
+    if (clean.isBlank()) return emptyList()
+
+    val blocks = splitIntoWorkoutBlocks(clean)
+    val parsedWorkouts = mutableListOf<ParsedWorkoutRant>()
+
+    for ((idx, block) in blocks.withIndex()) {
+      val parsed = parseWorkoutBlock(block, fallbackDayOffset = (blocks.size - 1 - idx))
+      parsedWorkouts.add(parsed)
     }
 
-    // Split text into clauses / lines / sentences
-    val segments = clean.split(Regex("[\n;.]|(?<=[0-9])\\s*,\\s*(?=[a-zA-Z])|(?i)\\s+(then|next|after that|afterwards|finished with|also did)\\s+"))
-      .map { it.trim() }
-      .filter { it.isNotEmpty() }
+    return parsedWorkouts.ifEmpty {
+      listOf(parseWorkoutBlock(clean, fallbackDayOffset = 0))
+    }
+  }
 
-    val parsedExercises = mutableListOf<ParsedExerciseLog>()
+  private fun splitIntoWorkoutBlocks(text: String): List<String> {
+    val lines = text.lines()
+    val blocks = mutableListOf<String>()
+    var currentBlock = StringBuilder()
+
+    val dateHeaderRegex = Regex(
+      """(?i)^\s*(?:[-*•#>]+\s*)?(?:(?:workout|session|day)\s*\d*[:\s-]+)?(?:on\s+)?(today|yesterday|\d+\s+days?\s+ago|last\s+\w+|\w+day|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?|\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*(?:,?\s*\d{4})?|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)(?:\s*[:,–-].*)?$"""
+    )
+
+    val dividerRegex = Regex("""^\s*[-=_*]{3,}\s*$""")
+
+    for (line in lines) {
+      val trimmed = line.trim()
+      if (dividerRegex.matches(trimmed)) {
+        if (currentBlock.isNotBlank()) {
+          blocks.add(currentBlock.toString().trim())
+          currentBlock = StringBuilder()
+        }
+        continue
+      }
+
+      if (dateHeaderRegex.matches(trimmed) && currentBlock.isNotBlank()) {
+        blocks.add(currentBlock.toString().trim())
+        currentBlock = StringBuilder()
+      }
+
+      currentBlock.append(line).append("\n")
+    }
+
+    if (currentBlock.isNotBlank()) {
+      blocks.add(currentBlock.toString().trim())
+    }
+
+    return blocks
+  }
+
+  private fun parseWorkoutBlock(block: String, fallbackDayOffset: Int): ParsedWorkoutRant {
+    val clean = block.trim()
+    val lines = clean.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    val (dateMillis, dateDisplay, dateClarification) = extractDateFromBlock(clean, fallbackDayOffset)
+
+    // Detect title from first line or exercises
     var detectedTitle = "Logged Workout"
-
-    // Check title in first sentence
+    val firstLine = lines.firstOrNull() ?: ""
+    val lowerFirst = firstLine.lowercase(Locale.ROOT)
     val lowerFull = clean.lowercase(Locale.ROOT)
+
     when {
       lowerFull.contains("push") -> detectedTitle = "Push Day"
       lowerFull.contains("pull") -> detectedTitle = "Pull Day"
@@ -112,6 +165,19 @@ object OfflineRantParser {
       lowerFull.contains("back") -> detectedTitle = "Back Workout"
       lowerFull.contains("upper") -> detectedTitle = "Upper Body"
       lowerFull.contains("lower") -> detectedTitle = "Lower Body"
+      lowerFull.contains("shoulder") -> detectedTitle = "Shoulders Workout"
+    }
+
+    // Split text into clauses / lines / sentences for exercise parsing
+    val segments = clean.split(Regex("[\n;.]|(?<=[0-9])\\s*,\\s*(?=[a-zA-Z])|(?i)\\s+(then|next|after that|afterwards|finished with|also did)\\s+"))
+      .map { it.trim() }
+      .filter { it.isNotEmpty() }
+
+    val parsedExercises = mutableListOf<ParsedExerciseLog>()
+    val clarifications = mutableListOf<String>()
+
+    if (dateClarification != null) {
+      clarifications.add(dateClarification)
     }
 
     for (segment in segments) {
@@ -145,25 +211,126 @@ object OfflineRantParser {
       }
     }
 
-    // If still empty but user typed something, provide a default entry so user isn't stuck
+    // Check for missing weights or reps to ask user clarifications
+    for (ex in parsedExercises) {
+      val missingWeight = ex.sets.any { it.weightKg <= 0.0 }
+      val missingReps = ex.sets.any { it.reps <= 0 }
+      if (missingWeight) {
+        clarifications.add("What weight was used for ${ex.exerciseName}?")
+      }
+      if (missingReps) {
+        clarifications.add("How many reps were performed for ${ex.exerciseName}?")
+      }
+    }
+
     if (parsedExercises.isEmpty()) {
-      parsedExercises.add(
-        ParsedExerciseLog(
-          exerciseName = "Barbell Bench Press",
-          sets = listOf(
-            ParsedSetLog(weightKg = 60.0, reps = 10),
-            ParsedSetLog(weightKg = 60.0, reps = 10),
-            ParsedSetLog(weightKg = 60.0, reps = 8)
-          )
-        )
-      )
+      clarifications.add("No specific lifts detected in this section. Please review exercises.")
     }
 
     return ParsedWorkoutRant(
       workoutTitle = detectedTitle,
       exercises = parsedExercises,
-      notes = clean
+      notes = clean,
+      workoutDateMillis = dateMillis,
+      dateDisplay = dateDisplay,
+      clarificationQuestions = clarifications
     )
+  }
+
+  private fun extractDateFromBlock(text: String, fallbackDayOffset: Int): Triple<Long, String, String?> {
+    val cal = java.util.Calendar.getInstance()
+    val now = cal.timeInMillis
+    val oneDay = 86400000L
+
+    val lower = text.lowercase(Locale.ROOT)
+
+    if (lower.contains("yesterday")) {
+      cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+      cal.set(java.util.Calendar.HOUR_OF_DAY, 10)
+      cal.set(java.util.Calendar.MINUTE, 0)
+      return Triple(cal.timeInMillis, "Yesterday", null)
+    }
+
+    if (lower.contains("today")) {
+      cal.set(java.util.Calendar.HOUR_OF_DAY, 10)
+      cal.set(java.util.Calendar.MINUTE, 0)
+      return Triple(cal.timeInMillis, "Today", null)
+    }
+
+    val daysAgoMatch = Regex("""(\d+)\s+days?\s+ago""").find(lower)
+    if (daysAgoMatch != null) {
+      val days = daysAgoMatch.groupValues[1].toIntOrNull() ?: 1
+      cal.add(java.util.Calendar.DAY_OF_YEAR, -days)
+      cal.set(java.util.Calendar.HOUR_OF_DAY, 10)
+      cal.set(java.util.Calendar.MINUTE, 0)
+      val sdf = java.text.SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+      return Triple(cal.timeInMillis, sdf.format(cal.time), null)
+    }
+
+    // Month + Day: e.g. "aug 20", "august 20", "sep 4th", "september 15, 2026"
+    val monthRegex = Regex("""(?i)\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?\b""")
+    val monthMatch = monthRegex.find(text)
+    if (monthMatch != null) {
+      val monthStr = monthMatch.groupValues[1].lowercase(Locale.ROOT)
+      val day = monthMatch.groupValues[2].toIntOrNull() ?: 1
+      val year = monthMatch.groupValues[3].toIntOrNull() ?: cal.get(java.util.Calendar.YEAR)
+
+      val monthIndex = when {
+        monthStr.startsWith("jan") -> 0
+        monthStr.startsWith("feb") -> 1
+        monthStr.startsWith("mar") -> 2
+        monthStr.startsWith("apr") -> 3
+        monthStr.startsWith("may") -> 4
+        monthStr.startsWith("jun") -> 5
+        monthStr.startsWith("jul") -> 6
+        monthStr.startsWith("aug") -> 7
+        monthStr.startsWith("sep") -> 8
+        monthStr.startsWith("oct") -> 9
+        monthStr.startsWith("nov") -> 10
+        monthStr.startsWith("dec") -> 11
+        else -> cal.get(java.util.Calendar.MONTH)
+      }
+
+      cal.set(java.util.Calendar.YEAR, year)
+      cal.set(java.util.Calendar.MONTH, monthIndex)
+      cal.set(java.util.Calendar.DAY_OF_MONTH, day)
+      cal.set(java.util.Calendar.HOUR_OF_DAY, 10)
+      cal.set(java.util.Calendar.MINUTE, 0)
+
+      val sdf = java.text.SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+      return Triple(cal.timeInMillis, sdf.format(cal.time), null)
+    }
+
+    // Slash format: e.g. "8/20" or "8/20/2026"
+    val slashRegex = Regex("""\b(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?\b""")
+    val slashMatch = slashRegex.find(text)
+    if (slashMatch != null) {
+      val m = slashMatch.groupValues[1].toIntOrNull() ?: 1
+      val d = slashMatch.groupValues[2].toIntOrNull() ?: 1
+      val y = slashMatch.groupValues[3].toIntOrNull() ?: cal.get(java.util.Calendar.YEAR)
+      val normalizedYear = if (y < 100) 2000 + y else y
+
+      cal.set(java.util.Calendar.YEAR, normalizedYear)
+      cal.set(java.util.Calendar.MONTH, (m - 1).coerceIn(0, 11))
+      cal.set(java.util.Calendar.DAY_OF_MONTH, d.coerceIn(1, 31))
+      cal.set(java.util.Calendar.HOUR_OF_DAY, 10)
+      cal.set(java.util.Calendar.MINUTE, 0)
+
+      val sdf = java.text.SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+      return Triple(cal.timeInMillis, sdf.format(cal.time), null)
+    }
+
+    // Default fallback
+    if (fallbackDayOffset > 0) {
+      cal.add(java.util.Calendar.DAY_OF_YEAR, -fallbackDayOffset)
+      cal.set(java.util.Calendar.HOUR_OF_DAY, 10)
+      cal.set(java.util.Calendar.MINUTE, 0)
+      val sdf = java.text.SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+      return Triple(cal.timeInMillis, sdf.format(cal.time), "Date not specified; set to $fallbackDayOffset day(s) ago.")
+    }
+
+    val sdf = java.text.SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+    return Triple(now, "Today", null)
   }
 
   private fun parseSegment(segment: String): Pair<String?, List<ParsedSetLog>> {

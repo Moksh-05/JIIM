@@ -40,46 +40,65 @@ class GeminiService {
     rantText: String,
     isOnline: Boolean
   ): ParsedWorkoutRant = withContext(Dispatchers.IO) {
+    parseGymRants(rantText, isOnline).firstOrNull() ?: OfflineRantParser.parseRant(rantText)
+  }
+
+  suspend fun parseGymRants(
+    rantText: String,
+    isOnline: Boolean
+  ): List<ParsedWorkoutRant> = withContext(Dispatchers.IO) {
     if (!isOnline || !isKeyConfigured) {
-      // Offline fallback: Use the smart local heuristic regex parser
-      return@withContext OfflineRantParser.parseRant(rantText)
+      return@withContext OfflineRantParser.parseMultiWorkoutRant(rantText)
     }
 
     try {
       val prompt = """
         You are an expert gym logger assistant for a lifter.
-        Extract the workout title and all exercises with their sets, weights in kg, and reps from this gym rant:
+        The user has provided a text containing ONE or MULTIPLE past gym workouts, separated by dates, lines, or sections.
+        Extract every workout separately. For each workout, determine:
+        1. "workoutTitle": Title (e.g., "Chest & Triceps", "Push Day", "Leg Day", or default based on exercises)
+        2. "dateDisplay": Date string mentioned (e.g., "Aug 20, 2026", "Yesterday", "3 days ago", or "Today")
+        3. "workoutDateMillis": Approximate timestamp in epoch milliseconds (for reference, current time is ${System.currentTimeMillis()})
+        4. "exercises": Array of exercises with "exerciseName" and "sets" (each set with "weightKg": double and "reps": int)
+        5. "notes": Notes or original description for that specific workout
+        6. "clarificationQuestions": Array of question strings to ask the lifter if anything is ambiguous, missing (like weight or reps), or if a date is unclear.
+        
+        Gym text:
         "$rantText"
         
-        Respond ONLY with a JSON object in this exact schema, without markdown formatting or code fences:
-        {
-          "workoutTitle": "Chest & Triceps",
-          "exercises": [
-            {
-              "exerciseName": "Barbell Bench Press",
-              "sets": [
-                {"weightKg": 80.0, "reps": 8},
-                {"weightKg": 80.0, "reps": 8}
-              ]
-            }
-          ],
-          "notes": "Felt good pump"
-        }
+        Respond ONLY with a valid JSON array of objects in this exact schema, without markdown formatting or code fences:
+        [
+          {
+            "workoutTitle": "Chest & Triceps",
+            "dateDisplay": "Aug 20, 2026",
+            "workoutDateMillis": 1724148000000,
+            "exercises": [
+              {
+                "exerciseName": "Barbell Bench Press",
+                "sets": [
+                  {"weightKg": 80.0, "reps": 8}
+                ]
+              }
+            ],
+            "notes": "Felt good pump",
+            "clarificationQuestions": []
+          }
+        ]
       """.trimIndent()
 
       val jsonResponse = callGemini(prompt)
       if (jsonResponse != null) {
-        val parsed = parseRantJson(jsonResponse, rantText)
-        if (parsed != null && parsed.exercises.isNotEmpty()) {
-          return@withContext parsed
+        val parsedList = parseRantsJson(jsonResponse, rantText)
+        if (parsedList.isNotEmpty()) {
+          return@withContext parsedList
         }
       }
     } catch (e: Exception) {
-      Log.e("GeminiService", "Online rant parsing failed, falling back to offline parser", e)
+      Log.e("GeminiService", "Online multi-rant parsing failed, falling back to offline parser", e)
     }
 
-    // Fallback to offline parser
-    OfflineRantParser.parseRant(rantText)
+    // Fallback to offline multi-parser
+    OfflineRantParser.parseMultiWorkoutRant(rantText)
   }
 
   suspend fun analyzeProgress(
@@ -193,11 +212,44 @@ class GeminiService {
     return cleaned.trim()
   }
 
-  private fun parseRantJson(jsonStr: String, originalText: String): ParsedWorkoutRant? {
+  private fun parseRantsJson(jsonStr: String, originalText: String): List<ParsedWorkoutRant> {
+    val clean = cleanJsonText(jsonStr)
+    val results = mutableListOf<ParsedWorkoutRant>()
+
+    try {
+      if (clean.startsWith("[")) {
+        val arr = JSONArray(clean)
+        for (i in 0 until arr.length()) {
+          val obj = arr.getJSONObject(i)
+          parseWorkoutObject(obj, originalText)?.let { results.add(it) }
+        }
+      } else if (clean.startsWith("{")) {
+        val obj = JSONObject(clean)
+        // Check if top-level has a "workouts" array
+        val workoutsArr = obj.optJSONArray("workouts")
+        if (workoutsArr != null) {
+          for (i in 0 until workoutsArr.length()) {
+            val wObj = workoutsArr.getJSONObject(i)
+            parseWorkoutObject(wObj, originalText)?.let { results.add(it) }
+          }
+        } else {
+          parseWorkoutObject(obj, originalText)?.let { results.add(it) }
+        }
+      }
+    } catch (e: Exception) {
+      Log.e("GeminiService", "Failed to parse rants JSON", e)
+    }
+
+    return results
+  }
+
+  private fun parseWorkoutObject(obj: JSONObject, originalText: String): ParsedWorkoutRant? {
     return try {
-      val obj = JSONObject(jsonStr)
       val title = obj.optString("workoutTitle", "Logged Workout")
       val notes = obj.optString("notes", originalText)
+      val dateDisplay = obj.optString("dateDisplay", "Today")
+      val dateMillis = obj.optLong("workoutDateMillis", System.currentTimeMillis())
+
       val exercisesArr = obj.optJSONArray("exercises") ?: JSONArray()
       val exercisesList = mutableListOf<ParsedExerciseLog>()
 
@@ -219,10 +271,30 @@ class GeminiService {
         }
       }
 
-      ParsedWorkoutRant(workoutTitle = title, exercises = exercisesList, notes = notes)
+      val questions = mutableListOf<String>()
+      val qArr = obj.optJSONArray("clarificationQuestions")
+      if (qArr != null) {
+        for (k in 0 until qArr.length()) {
+          val q = qArr.optString(k, "")
+          if (q.isNotBlank()) questions.add(q)
+        }
+      }
+
+      ParsedWorkoutRant(
+        workoutTitle = title,
+        exercises = exercisesList,
+        notes = notes,
+        workoutDateMillis = dateMillis,
+        dateDisplay = dateDisplay,
+        clarificationQuestions = questions
+      )
     } catch (_: Exception) {
       null
     }
+  }
+
+  private fun parseRantJson(jsonStr: String, originalText: String): ParsedWorkoutRant? {
+    return parseRantsJson(jsonStr, originalText).firstOrNull()
   }
 
   private fun parseAnalysisJson(jsonStr: String): AiProgressAnalysis? {

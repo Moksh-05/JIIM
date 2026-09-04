@@ -41,6 +41,7 @@ class GymRepository(
     rant: ParsedWorkoutRant,
     timestamp: Long = System.currentTimeMillis()
   ): Long = withContext(Dispatchers.IO) {
+    val sessionTime = if (rant.workoutDateMillis > 0L) rant.workoutDateMillis else timestamp
     var totalVolume = 0.0
     var totalSets = 0
     var prsCount = 0
@@ -55,8 +56,8 @@ class GymRepository(
     val sessionId = workoutDao.insertWorkoutSession(
       WorkoutSession(
         name = if (rant.workoutTitle.isNotBlank()) rant.workoutTitle else "Logged Workout",
-        startTimeMillis = timestamp,
-        endTimeMillis = timestamp + 3600000L,
+        startTimeMillis = sessionTime,
+        endTimeMillis = sessionTime + 3600000L,
         totalVolumeKg = totalVolume,
         totalSets = totalSets,
         prCount = 0,
@@ -90,7 +91,7 @@ class GymRepository(
                 weightKg = s.weightKg,
                 reps = s.reps,
                 estimated1RmKg = current1Rm,
-                dateAchieved = timestamp
+                dateAchieved = sessionTime
               )
             )
             isPr = true
@@ -124,7 +125,15 @@ class GymRepository(
   }
 
   suspend fun deleteWorkout(workoutId: Long) = withContext(Dispatchers.IO) {
+    workoutDao.deleteSetsForWorkoutSession(workoutId)
+    workoutDao.deleteExercisesForWorkoutSession(workoutId)
     workoutDao.deleteWorkoutSession(workoutId)
+  }
+
+  suspend fun deleteAllWorkouts() = withContext(Dispatchers.IO) {
+    workoutDao.deleteAllSetLogs()
+    workoutDao.deleteAllExerciseLogs()
+    workoutDao.deleteAllWorkoutSessions()
   }
 
   suspend fun recordCustomPr(exerciseName: String, weight: Double, reps: Int) = withContext(Dispatchers.IO) {
@@ -142,6 +151,10 @@ class GymRepository(
 
   suspend fun deletePr(exerciseName: String) = withContext(Dispatchers.IO) {
     prDao.deletePr(exerciseName)
+  }
+
+  suspend fun deleteAllPrs() = withContext(Dispatchers.IO) {
+    prDao.deleteAllPrs()
   }
 
   suspend fun saveCustomSplit(
@@ -163,6 +176,10 @@ class GymRepository(
     routineDao.deleteRoutine(id)
   }
 
+  suspend fun deleteAllRoutines() = withContext(Dispatchers.IO) {
+    routineDao.deleteAllRoutines()
+  }
+
   suspend fun logBodyWeight(weightKg: Double, dateMillis: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) {
     bodyWeightDao.insertBodyWeight(
       BodyWeightLog(
@@ -174,6 +191,18 @@ class GymRepository(
 
   suspend fun deleteBodyWeight(id: Long) = withContext(Dispatchers.IO) {
     bodyWeightDao.deleteBodyWeight(id)
+  }
+
+  suspend fun deleteAllBodyWeights() = withContext(Dispatchers.IO) {
+    bodyWeightDao.deleteAllBodyWeights()
+  }
+
+  suspend fun clearAllData() = withContext(Dispatchers.IO) {
+    workoutDao.deleteAllSetLogs()
+    workoutDao.deleteAllExerciseLogs()
+    workoutDao.deleteAllWorkoutSessions()
+    prDao.deleteAllPrs()
+    bodyWeightDao.deleteAllBodyWeights()
   }
 
   suspend fun deleteExerciseFromWorkout(exerciseLogId: Long, workoutSessionId: Long) = withContext(Dispatchers.IO) {

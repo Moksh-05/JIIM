@@ -26,6 +26,21 @@ interface WorkoutDao {
   @Query("DELETE FROM workout_sessions WHERE id = :sessionId")
   suspend fun deleteWorkoutSession(sessionId: Long)
 
+  @Query("DELETE FROM set_logs WHERE exerciseLogId IN (SELECT id FROM exercise_logs WHERE workoutSessionId = :sessionId)")
+  suspend fun deleteSetsForWorkoutSession(sessionId: Long)
+
+  @Query("DELETE FROM exercise_logs WHERE workoutSessionId = :sessionId")
+  suspend fun deleteExercisesForWorkoutSession(sessionId: Long)
+
+  @Query("DELETE FROM set_logs")
+  suspend fun deleteAllSetLogs()
+
+  @Query("DELETE FROM exercise_logs")
+  suspend fun deleteAllExerciseLogs()
+
+  @Query("DELETE FROM workout_sessions")
+  suspend fun deleteAllWorkoutSessions()
+
   @Transaction
   @Query("SELECT * FROM workout_sessions ORDER BY startTimeMillis DESC")
   fun getAllWorkouts(): Flow<List<WorkoutWithExercises>>
@@ -67,6 +82,9 @@ interface ExercisePrDao {
 
   @Query("DELETE FROM exercise_prs WHERE exerciseName = :exerciseName")
   suspend fun deletePr(exerciseName: String)
+
+  @Query("DELETE FROM exercise_prs")
+  suspend fun deleteAllPrs()
 }
 
 @Dao
@@ -85,6 +103,9 @@ interface RoutineDao {
 
   @Query("DELETE FROM routine_templates WHERE id = :id")
   suspend fun deleteRoutine(id: Long)
+
+  @Query("DELETE FROM routine_templates")
+  suspend fun deleteAllRoutines()
 }
 
 @Dao
@@ -97,4 +118,7 @@ interface BodyWeightDao {
 
   @Query("DELETE FROM body_weight_logs WHERE id = :id")
   suspend fun deleteBodyWeight(id: Long)
+
+  @Query("DELETE FROM body_weight_logs")
+  suspend fun deleteAllBodyWeights()
 }

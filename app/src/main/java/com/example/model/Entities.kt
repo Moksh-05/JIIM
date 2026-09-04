@@ -92,9 +92,13 @@ data class RoutineTemplate(
 )
 
 data class ParsedWorkoutRant(
+  val id: String = java.util.UUID.randomUUID().toString(),
   val workoutTitle: String,
   val exercises: List<ParsedExerciseLog>,
-  val notes: String = ""
+  val notes: String = "",
+  val workoutDateMillis: Long = System.currentTimeMillis(),
+  val dateDisplay: String = "Today",
+  val clarificationQuestions: List<String> = emptyList()
 )
 
 data class ParsedExerciseLog(
