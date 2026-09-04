@@ -18,12 +18,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+enum class GeminiChatModel(val modelId: String, val displayName: String, val badge: String) {
+  FLASH("gemini-3.5-flash", "Gemini 3.5 Flash", "Standard"),
+  PRO("gemini-3.1-pro-preview", "Gemini 3.1 Pro", "Deep Reasoning"),
+  FLASH_LITE("gemini-3.1-flash-lite-preview", "Gemini 3.1 Flash-Lite", "Fast Cues")
+}
+
 class GeminiService {
 
   private val client = OkHttpClient.Builder()
-    .connectTimeout(15, TimeUnit.SECONDS)
-    .readTimeout(20, TimeUnit.SECONDS)
-    .writeTimeout(15, TimeUnit.SECONDS)
+    .connectTimeout(60, TimeUnit.SECONDS)
+    .readTimeout(60, TimeUnit.SECONDS)
+    .writeTimeout(60, TimeUnit.SECONDS)
     .build()
 
   private val apiKey: String
@@ -53,34 +59,55 @@ class GeminiService {
 
     try {
       val prompt = """
-        You are an expert gym logger assistant for a lifter.
-        The user has provided a text containing ONE or MULTIPLE past gym workouts, separated by dates, lines, or sections.
-        Extract every workout separately. For each workout, determine:
-        1. "workoutTitle": Title (e.g., "Chest & Triceps", "Push Day", "Leg Day", or default based on exercises)
-        2. "dateDisplay": Date string mentioned (e.g., "Aug 20, 2026", "Yesterday", "3 days ago", or "Today")
-        3. "workoutDateMillis": Approximate timestamp in epoch milliseconds (for reference, current time is ${System.currentTimeMillis()})
-        4. "exercises": Array of exercises with "exerciseName" and "sets" (each set with "weightKg": double and "reps": int)
-        5. "notes": Notes or original description for that specific workout
-        6. "clarificationQuestions": Array of question strings to ask the lifter if anything is ambiguous, missing (like weight or reps), or if a date is unclear.
+        You are an expert fitness data parser and biomechanics extraction engine.
+        You map unstructured, rant-style lifter notes into a structured workout schema.
         
-        Gym text:
+        CRITICAL PARSING RULES:
+        1. Fractional & Partial Reps: Recognize decimal points in reps (e.g., "6.5 reps failure", "8.25 reps", "failed at 6.5") as exact decimal numbers in "reps" (e.g. 6.5). Never round up to an integer!
+        2. Muscular Failure Points: If the lifter mentions where they failed (e.g. "preacher curl machine stuck at 90 degrees", "failed at 6.5 reps"), record this in "failurePoint".
+        3. Biofeedback Translation: Map subjective notes into standardized tags in "biofeedbackTags" array:
+           - "fingers hurt", "grip gave out", "straps slipped" -> "grip_fatigue"
+           - "felt awkward", "form breakdown", "lost arch" -> "form_breakdown"
+           - "left arm weaker", "discrepancy" -> "asymmetry"
+           - "armpit discomfort", "shoulder pinch", "knee twinge" -> "joint_discomfort"
+           - "insane burn", "mind-muscle peak", "crazy pump" -> "peak_burn"
+           - "gassed out", "out of breath", "cardio fatigue" -> "cardio_fatigue"
+        4. Asymmetric Unilateral Discrepancies: If left and right sides performed different reps or weights (e.g. "cable lateral raises left arm hit 15 reps, right arm hit 17 reps"), split them into dual exercise entries or separate sets marked with side "LEFT" and "RIGHT":
+           e.g. "Dumbbell Lateral Raise (Left)" side="LEFT", "Dumbbell Lateral Raise (Right)" side="RIGHT".
+        5. Mid-Set Adjustments & Drop Sets: If the lifter drops weight mid-set (e.g. "started at 20 lbs but dropped to 15 lbs for controlled negative burn"), capture the drop:
+           "dropWeightKg", "dropReps", and setKind="DROP".
+        6. Tempo & Form Cues: Capture tempo descriptions (e.g. "3-1-1-0", "explosive positive, controlled negative", "pause on chest") in "tempo".
+        7. Date Recognition: Identify if notes span multiple sessions/dates (e.g. "Aug 20", "Yesterday", "3 days ago"). Create a distinct workout object for each session!
+        
+        Text to parse:
         "$rantText"
         
-        Respond ONLY with a valid JSON array of objects in this exact schema, without markdown formatting or code fences:
+        Respond ONLY with a valid JSON array of objects with this schema:
         [
           {
-            "workoutTitle": "Chest & Triceps",
-            "dateDisplay": "Aug 20, 2026",
-            "workoutDateMillis": 1724148000000,
+            "workoutTitle": "Chest & Arms Hypertrophy",
+            "dateDisplay": "Yesterday",
+            "workoutDateMillis": ${System.currentTimeMillis()},
+            "notes": "Original notes",
             "exercises": [
               {
-                "exerciseName": "Barbell Bench Press",
+                "exerciseName": "Preacher Curl",
+                "isUnilateral": false,
                 "sets": [
-                  {"weightKg": 80.0, "reps": 8}
+                  {
+                    "weightKg": 35.0,
+                    "reps": 6.5,
+                    "setKind": "FAILURE",
+                    "side": "BOTH",
+                    "failurePoint": "failed at 6.5 reps (mid-concentric)",
+                    "biofeedbackTags": ["form_breakdown"],
+                    "tempo": "explosive concentric, 3s eccentric",
+                    "dropWeightKg": 0.0,
+                    "dropReps": 0.0
+                  }
                 ]
               }
             ],
-            "notes": "Felt good pump",
             "clarificationQuestions": []
           }
         ]
@@ -262,12 +289,51 @@ class GeminiService {
         for (j in 0 until setsArr.length()) {
           val sObj = setsArr.getJSONObject(j)
           val weight = sObj.optDouble("weightKg", 0.0)
-          val reps = sObj.optInt("reps", 10)
-          setsList.add(ParsedSetLog(weightKg = weight, reps = reps))
+          val reps = sObj.optDouble("reps", 10.0)
+          val setKind = sObj.optString("setKind", "NORMAL")
+          val side = sObj.optString("side", "BOTH")
+          val failurePoint = sObj.optString("failurePoint", "")
+          val tempo = sObj.optString("tempo", "")
+          val dropWeight = sObj.optDouble("dropWeightKg", 0.0)
+          val dropReps = sObj.optDouble("dropReps", 0.0)
+
+          val bioTagsList = mutableListOf<String>()
+          val bioArr = sObj.optJSONArray("biofeedbackTags")
+          if (bioArr != null) {
+            for (b in 0 until bioArr.length()) {
+              val tag = bioArr.optString(b)
+              if (tag.isNotBlank()) bioTagsList.add(tag)
+            }
+          }
+          val biofeedbackTags = bioTagsList.joinToString(",")
+
+          setsList.add(
+            ParsedSetLog(
+              weightKg = weight,
+              reps = reps,
+              setKind = setKind,
+              side = side,
+              biofeedbackTags = biofeedbackTags,
+              tempo = tempo,
+              failurePoint = failurePoint,
+              dropWeightKg = dropWeight,
+              dropReps = dropReps
+            )
+          )
         }
 
+        val isUnilateral = exObj.optBoolean("isUnilateral", false) ||
+          name.contains("(Left)", ignoreCase = true) ||
+          name.contains("(Right)", ignoreCase = true)
+
         if (setsList.isNotEmpty()) {
-          exercisesList.add(ParsedExerciseLog(exerciseName = name, sets = setsList))
+          exercisesList.add(
+            ParsedExerciseLog(
+              exerciseName = name,
+              sets = setsList,
+              isUnilateral = isUnilateral
+            )
+          )
         }
       }
 
@@ -349,20 +415,40 @@ class GeminiService {
     lifterProfile: String,
     recentWorkoutSummary: String,
     isOnline: Boolean
+  ): Pair<String, List<String>> {
+    return chatWithJim(
+      historyTurns = emptyList(),
+      userMessage = userMessage,
+      lifterProfile = lifterProfile,
+      recentWorkoutSummary = recentWorkoutSummary,
+      model = GeminiChatModel.FLASH,
+      isOnline = isOnline
+    )
+  }
+
+  suspend fun chatWithJim(
+    historyTurns: List<Pair<String, String>>,
+    userMessage: String,
+    lifterProfile: String,
+    recentWorkoutSummary: String,
+    model: GeminiChatModel = GeminiChatModel.FLASH,
+    isOnline: Boolean
   ): Pair<String, List<String>> = withContext(Dispatchers.IO) {
     if (!isOnline || !isKeyConfigured) {
-      return@withContext getOfflineTrainerResponse(userMessage, lifterProfile)
+      return@withContext getOfflineJimResponse(userMessage, lifterProfile)
     }
 
     try {
-      val prompt = """
-        You are "JIIM AI", an elite gym coach, biomechanics specialist, and hypertrophy trainer inside the JIIM app.
-        Your tone is motivating, sharp, scientific, and athletic. You talk like a seasoned lifter and coach (concise, high impact, no fluff).
+      val systemPrompt = """
+        You are "Jim", an elite evidence-based bodybuilding coach, biomechanics specialist, and progressive overload strategist.
+        Your name is Jim.
         
-        CRITICAL MANDATE:
-        - The lifter specifically expects you to ask questions often to gather as much insight as possible into their recovery, sleep, muscle soreness, joint health, and lifting goals.
-        - Give direct, actionable lifting/nutrition advice.
-        - ALWAYS end your response with 1-2 targeted questions to extract more insights about their training, fatigue, or form.
+        CRITICAL ROLE MANDATES:
+        - Your name is Jim. Speak directly to the lifter as their coach Jim.
+        - Tone: Motivating, sharp, scientific, and athletic with zero fluff and practical biomechanics (hypertrophy, mechanical tension, lengthening partials, progressive overload, fatigue management).
+        - Multi-Turn Conversation: Actively maintain conversational context and remember previous instructions and logs discussed with the lifter.
+        - Analyze granular failure points, unilateral imbalances, volume ramps, and recovery markers.
+        - ALWAYS end your coaching response with 1-2 targeted, thought-provoking questions to guide the lifter's next action or assess their fatigue.
         
         Lifter Profile:
         $lifterProfile
@@ -370,79 +456,152 @@ class GeminiService {
         Recent Workouts History:
         $recentWorkoutSummary
         
-        Previous Conversation:
-        $historyContext
-        
-        Lifter says:
-        "$userMessage"
-        
-        Respond with a JSON object:
+        Format your response as a JSON object:
         {
-          "coachReply": "your direct answer followed by 1-2 probing coach questions",
+          "jimReply": "Your direct coaching analysis followed by 1-2 probing coach questions",
           "suggestedFollowUps": ["Short quick reply chip 1", "Short quick reply chip 2", "Short quick reply chip 3"]
         }
       """.trimIndent()
 
-      val rawJson = callGemini(prompt)
-      if (rawJson != null) {
-        try {
-          val obj = JSONObject(rawJson)
-          val reply = obj.optString("coachReply", "")
-          val followUps = mutableListOf<String>()
-          val arr = obj.optJSONArray("suggestedFollowUps")
-          if (arr != null) {
-            for (i in 0 until arr.length()) {
-              followUps.add(arr.getString(i))
+      val url = "https://generativelanguage.googleapis.com/v1beta/models/${model.modelId}:generateContent?key=$apiKey"
+
+      val requestBodyJson = JSONObject().apply {
+        // System instruction
+        val sysInstObj = JSONObject().apply {
+          val partsArr = JSONArray().apply {
+            put(JSONObject().apply { put("text", systemPrompt) })
+          }
+          put("parts", partsArr)
+        }
+        put("systemInstruction", sysInstObj)
+
+        // Contents array for multi-turn chat
+        val contentsArray = JSONArray()
+
+        // Add previous history turns (up to last 10 turns to stay optimal)
+        historyTurns.takeLast(10).forEach { (sender, text) ->
+          if (text.isNotBlank()) {
+            val role = if (sender.equals("USER", ignoreCase = true)) "user" else "model"
+            contentsArray.put(JSONObject().apply {
+              put("role", role)
+              put("parts", JSONArray().apply {
+                put(JSONObject().apply { put("text", text) })
+              })
+            })
+          }
+        }
+
+        // Add current user turn
+        contentsArray.put(JSONObject().apply {
+          put("role", "user")
+          put("parts", JSONArray().apply {
+            put(JSONObject().apply { put("text", userMessage) })
+          })
+        })
+
+        put("contents", contentsArray)
+
+        // Generation config
+        val genConfig = JSONObject().apply {
+          put("temperature", 0.7)
+          put("responseMimeType", "application/json")
+        }
+        put("generationConfig", genConfig)
+      }
+
+      val request = Request.Builder()
+        .url(url)
+        .post(requestBodyJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+        .build()
+
+      client.newCall(request).execute().use { response ->
+        if (response.isSuccessful) {
+          val responseText = response.body?.string()
+          if (!responseText.isNullOrBlank()) {
+            val root = JSONObject(responseText)
+            val candidates = root.optJSONArray("candidates")
+            if (candidates != null && candidates.length() > 0) {
+              val firstCandidate = candidates.getJSONObject(0)
+              val content = firstCandidate.optJSONObject("content")
+              val parts = content?.optJSONArray("parts")
+              if (parts != null && parts.length() > 0) {
+                val rawText = parts.getJSONObject(0).optString("text")
+                val clean = cleanJsonText(rawText)
+                try {
+                  val obj = JSONObject(clean)
+                  val reply = obj.optString("jimReply", obj.optString("coachReply", ""))
+                  val followUps = mutableListOf<String>()
+                  val arr = obj.optJSONArray("suggestedFollowUps")
+                  if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                      followUps.add(arr.getString(i))
+                    }
+                  }
+                  if (reply.isNotBlank()) {
+                    return@withContext Pair(reply, followUps)
+                  }
+                } catch (_: Exception) {
+                  if (clean.isNotBlank()) {
+                    return@withContext Pair(
+                      clean,
+                      listOf("Got it, Jim", "How should I structure my next set?", "Check my recovery")
+                    )
+                  }
+                }
+              }
             }
           }
-          if (reply.isNotBlank()) {
-            return@withContext Pair(reply, followUps)
-          }
-        } catch (_: Exception) {}
+        } else {
+          Log.w("GeminiService", "Jim chat failed with HTTP code: ${response.code} on model ${model.modelId}")
+        }
       }
     } catch (e: Exception) {
-      Log.e("GeminiService", "JIIM AI chat error", e)
+      Log.e("GeminiService", "Jim chat error", e)
     }
 
-    getOfflineTrainerResponse(userMessage, lifterProfile)
+    getOfflineJimResponse(userMessage, lifterProfile)
   }
 
   private fun getOfflineTrainerResponse(userMessage: String, lifterProfile: String): Pair<String, List<String>> {
+    return getOfflineJimResponse(userMessage, lifterProfile)
+  }
+
+  private fun getOfflineJimResponse(userMessage: String, lifterProfile: String): Pair<String, List<String>> {
     val lower = userMessage.lowercase()
     return when {
       lower.contains("sleep") || lower.contains("recover") || lower.contains("rest") -> {
         Pair(
-          "Sleep is your primary anabolic window—growth hormone peak occurs in slow-wave sleep. If you get under 7 hours, your nervous system recovery drops by 30%, which directly impacts 1RM bench and squat stability.\n\nJIIM AI's Insight Question: How many hours did you log last night, and which muscle group feels the most sore or inflamed right now?",
+          "Sleep is your primary anabolic window—growth hormone peak occurs in slow-wave sleep. If you get under 7 hours, your nervous system recovery drops by 30%, which directly impacts 1RM bench and squat stability.\n\nJim's Question: How many hours did you log last night, and which muscle group feels the most sore or inflamed right now?",
           listOf("Slept 7-8 hours, ready", "Under 6 hours, fatigued", "Chest & front delts are sore", "Legs feel completely fried")
         )
       }
       lower.contains("bench") || lower.contains("chest") -> {
         Pair(
-          "For bench overload: Keep shoulder blades depressed and retracted into the pad, create full leg drive with heels planted, and tuck elbows at ~45° to recruit sternal pecs while protecting the rotator cuff. When stuck, adding a 1-second pause on the chest builds explosive bottom-end power.\n\nJIIM AI's Insight Question: What is your current working weight on bench press, and where in the movement do you usually fail (off the chest, or mid-way at lockout)?",
+          "For bench overload: Keep shoulder blades depressed and retracted into the pad, create full leg drive with heels planted, and tuck elbows at ~45° to recruit sternal pecs while protecting the rotator cuff. When stuck, adding a 1-second pause on the chest builds explosive bottom-end power.\n\nJim's Question: What is your current working weight on bench press, and where in the movement do you usually fail (off the chest, or mid-way at lockout)?",
           listOf("Stuck off the chest", "Lockout failure (triceps)", "Current bench is 80kg", "Shoulder hurts during press")
         )
       }
       lower.contains("squat") || lower.contains("leg") -> {
         Pair(
-          "On squats, ensure your ribcage is stacked over your pelvis with 360-degree intra-abdominal bracing. Drive knees out over your middle toes and maintain equal foot pressure across tripod contact points (big toe, pinky toe, heel).\n\nJIIM AI's Insight Question: Are you doing low-bar or high-bar squats, and do you feel any knee or hip tightness after leg day?",
+          "On squats, ensure your ribcage is stacked over your pelvis with 360-degree intra-abdominal bracing. Drive knees out over your middle toes and maintain equal foot pressure across tripod contact points (big toe, pinky toe, heel).\n\nJim's Question: Are you doing low-bar or high-bar squats, and do you feel any knee or hip tightness after leg day?",
           listOf("High-bar Olympic style", "Low-bar powerlifting style", "Knees feel slightly stiff", "Quads are super sore")
         )
       }
       lower.contains("protein") || lower.contains("diet") || lower.contains("calorie") || lower.contains("eat") -> {
         Pair(
-          "To optimize muscle protein synthesis (MPS), aim for 1.8g to 2.2g of protein per kg of body weight, split across 3 to 5 meals. Each feeding should contain at least 2.5g to 3g of leucine to trigger mTOR activation.\n\nJIIM AI's Insight Question: Are you currently in a caloric surplus (bulking), a deficit (cutting), or eating at maintenance?",
+          "To optimize muscle protein synthesis (MPS), aim for 1.8g to 2.2g of protein per kg of body weight, split across 3 to 5 meals. Each feeding should contain at least 2.5g to 3g of leucine to trigger mTOR activation.\n\nJim's Question: Are you currently in a caloric surplus (bulking), a deficit (cutting), or eating at maintenance?",
           listOf("Caloric surplus (bulking)", "Caloric deficit (cutting)", "Maintenance recomp", "Track my daily protein")
         )
       }
       lower.contains("plateau") || lower.contains("stuck") -> {
         Pair(
-          "Plateaus are usually caused by accumulated systemic fatigue or lack of targeted accessory stimulus. We can break it with micro-loading (+1kg per side), wave periodization (shifting from 3x8 to 5x5), or a deload week.\n\nJIIM AI's Insight Question: Which specific exercise has been stalled, and for how many weeks have the weights or reps stayed the same?",
+          "Plateaus are usually caused by accumulated systemic fatigue or lack of targeted accessory stimulus. We can break it with micro-loading (+1kg per side), wave periodization (shifting from 3x8 to 5x5), or a deload week.\n\nJim's Question: Which specific exercise has been stalled, and for how many weeks have the weights or reps stayed the same?",
           listOf("Barbell Bench Press", "Overhead Barbell Press", "Barbell Back Squat", "Stalled for 3 weeks")
         )
       }
       else -> {
         Pair(
-          "I'm locked in as your coach. My goal is to optimize your biomechanics, volume management, and progressive overload so you make steady, injury-free gains every single week.\n\nJIIM AI's Insight Question: To dial in your program today: How is your energy level right now (1-10), and what muscle group are you hitting today?",
+          "I'm locked in as your coach, Jim. My goal is to optimize your biomechanics, volume management, and progressive overload so you make steady, injury-free gains every single week.\n\nJim's Question: To dial in your program today: How is your energy level right now (1-10), and what muscle group are you hitting today?",
           listOf("Energy is 8/10, hitting Chest", "Feeling 6/10, hitting Back/Pull", "Leg Day today", "Need a 10-minute warm-up")
         )
       }

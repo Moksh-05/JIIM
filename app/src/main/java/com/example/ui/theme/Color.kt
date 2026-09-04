@@ -2,30 +2,43 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Minimalist, Classy & Aesthetic Gym Palette (No Neon, Matte Black & Brushed Titanium)
-val MatteBlack = Color(0xFF090A0D)
-val SurfaceDark = Color(0xFF111318)
-val CardDark = Color(0xFF161820)
-val CardElevated = Color(0xFF1C1E27)
-val BorderSubtle = Color(0xFF262934)
-val BorderHighlight = Color(0xFF383C4C)
+// MacroFactor Dark Aesthetic Palette (Jeff Nippard scientific & sleek design)
+val MacroFactorBg = Color(0xFF111216)
+val MacroFactorSurface = Color(0xFF181A20)
+val MacroFactorCard = Color(0xFF1E2129)
+val MacroFactorCardElevated = Color(0xFF252934)
+val MacroFactorBorderSubtle = Color(0xFF2C313E)
+val MacroFactorBorderHighlight = Color(0xFF3B4254)
+
+// MacroFactor Signature Scientific Accents
+val MacroEmerald = Color(0xFF05DF72) // MacroFactor vibrant target green
+val MacroCoral = Color(0xFFFF6B4A)   // MacroFactor vibrant expenditure coral/orange
+val MacroCyan = Color(0xFF38BDF8)    // MacroFactor sky/energy blue
+val MacroPurple = Color(0xFFA855F7)  // MacroFactor weight trend purple
+val MacroAmber = Color(0xFFF59E0B)   // MacroFactor carbs/targets golden amber
 
 // Typography & Text
-val TextPrimary = Color(0xFFF3F4F7)
-val TextSecondary = Color(0xFF9CA3B2)
-val TextTertiary = Color(0xFF646B7B)
+val TextPrimary = Color(0xFFF8FAFC)
+val TextSecondary = Color(0xFF94A3B8)
+val TextTertiary = Color(0xFF64748B)
 
-// Classy Metallic & Monochrome Accents (Subtle, High-End Luxury)
-val TitaniumWhite = Color(0xFFF1F3F7)
-val TitaniumSilver = Color(0xFFCBD2DE)
-val PlatinumSteel = Color(0xFF8E95A5)
-val AccentSteel = Color(0xFF4A5263)
+// Aliases mapped for 100% backward compatibility
+val MatteBlack = MacroFactorBg
+val SurfaceDark = MacroFactorSurface
+val CardDark = MacroFactorCard
+val CardElevated = MacroFactorCardElevated
+val BorderSubtle = MacroFactorBorderSubtle
+val BorderHighlight = MacroFactorBorderHighlight
 
-// Mapped legacy constants for seamless compatibility without neon
-val VoltLime = Color(0xFFE2E6EE) // Replaced neon lime with clean titanium silver
-val ElectricCyan = Color(0xFFCBD5E1) // Replaced electric cyan with muted ice platinum
-val FlameOrange = Color(0xFFD48B54) // Muted warm amber
-val GoldPr = Color(0xFFD4AF37) // Subtle champagne brass
+val TitaniumWhite = Color(0xFFF8FAFC)
+val TitaniumSilver = Color(0xFFCBD5E1)
+val PlatinumSteel = Color(0xFF94A3B8)
+val AccentSteel = Color(0xFF475569)
+
+val VoltLime = MacroEmerald
+val ElectricCyan = MacroCyan
+val FlameOrange = MacroCoral
+val GoldPr = MacroAmber
 
 val DarkObsidianBg = MatteBlack
 val DarkSurface = SurfaceDark
@@ -37,5 +50,5 @@ val TextWhite = TextPrimary
 val TextMuted = TextSecondary
 val TextDim = TextTertiary
 
-val GreenSuccess = Color(0xFF5BA872) // Muted sage green
-val PurpleAccent = Color(0xFF9E86C8) // Muted slate violet
+val GreenSuccess = MacroEmerald
+val PurpleAccent = MacroPurple

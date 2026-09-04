@@ -1179,9 +1179,9 @@ fun ProfileScreen(
         }
       }
 
-      // JIIM AI's Recommendations for User
+      // Coach Recommendations for User
       Text(
-        text = "JIIM AI'S PERSONALIZED COACH SUGGESTIONS",
+        text = "COACH JIMMY'S PERSONALIZED STRATEGY SUGGESTIONS",
         fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
         color = TitaniumSilver,
@@ -1541,7 +1541,7 @@ fun ProfileScreen(
       is DeleteTarget.AllPrs -> "Clear All Personal Records?" to "This will permanently delete all ${prs.size} exercise personal records and estimated 1RMs."
       is DeleteTarget.AllRoutines -> "Clear All Custom Routines?" to "This will permanently delete all ${routines.size} custom routine templates."
       is DeleteTarget.AllCustomExercises -> "Clear All Custom Exercises?" to "This will permanently delete all ${customExercises.size} custom exercises you created."
-      is DeleteTarget.WipeEverything -> "⚠️ Wipe All Logs & Data?" to "This will permanently erase ALL workout logs, weight entries, PR vault records, and AI chat history. Your app will reset to a clean slate."
+      is DeleteTarget.WipeEverything -> "⚠️ Wipe All Logs & Data?" to "This will permanently erase ALL workout logs, weight entries, PR vault records, and coach chat history. Your app will reset to a clean slate."
       is DeleteTarget.SingleWorkout -> "Delete Workout Session?" to "Delete \"${target.name}\"? All recorded sets from this session will be permanently removed."
       is DeleteTarget.SingleBodyWeight -> "Delete Weight Entry?" to "Delete weight log entry of ${target.weightStr}?"
       is DeleteTarget.SinglePr -> "Delete Personal Record?" to "Delete PR record for \"${target.exerciseName}\"?"

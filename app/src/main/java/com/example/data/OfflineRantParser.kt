@@ -369,64 +369,137 @@ object OfflineRantParser {
 
   private fun extractSetsFromText(text: String): List<ParsedSetLog> {
     val results = mutableListOf<ParsedSetLog>()
+    val lower = text.lowercase(Locale.ROOT)
 
-    // Pattern 1: 80kg 3x8 or 80 kg 3x8 or 80kg x 3x8 or 80lbs 3x8
-    val patternSetsX = Regex("([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?\\s*(?:for)?\\s*([0-9]+)\\s*(?:x|sets?\\s*(?:of)?)\\s*([0-9]+)", RegexOption.IGNORE_CASE)
+    // Biofeedback tags extraction
+    val bioTags = mutableListOf<String>()
+    if (lower.contains("grip") || lower.contains("fingers hurt") || lower.contains("forearm")) bioTags.add("grip_fatigue")
+    if (lower.contains("form breakdown") || lower.contains("awkward") || lower.contains("sloppy")) bioTags.add("form_breakdown")
+    if (lower.contains("asymmetr") || lower.contains("left weaker") || lower.contains("right weaker")) bioTags.add("asymmetry")
+    if (lower.contains("burn") || lower.contains("pump") || lower.contains("tension")) bioTags.add("peak_burn")
+    if (lower.contains("joint") || lower.contains("hurt") || lower.contains("pinch") || lower.contains("discomfort")) bioTags.add("joint_discomfort")
+    if (lower.contains("gassed") || lower.contains("breath") || lower.contains("cardio")) bioTags.add("cardio_fatigue")
+    val bioString = bioTags.joinToString(",")
+
+    // Tempo detection
+    var tempo = ""
+    if (lower.contains("controlled negative") || lower.contains("slow eccentric")) tempo = "controlled negative"
+    if (lower.contains("pause") || lower.contains("paused")) tempo = "paused rep"
+    if (lower.contains("explosive")) tempo = "explosive concentric"
+
+    // Failure point detection
+    var failurePoint = ""
+    val failMatch = Regex("""failed(?:\s+at)?\s+([0-9]+(?:\.[0-9]+)?\s*reps?)""", RegexOption.IGNORE_CASE).find(text)
+    if (failMatch != null) {
+      failurePoint = failMatch.value
+    }
+
+    // Drop set detection: e.g. "dropped to 15 lbs for 4 reps" or "drops to 15"
+    var dropWeight = 0.0
+    var dropReps = 0.0
+    val dropMatch = Regex("""(?:drop(?:ped)?(?:\s+to)?)\s+([0-9]+(?:\.[0-9]+)?)\s*(?:kg|lbs)?(?:\s*(?:for)?\s*([0-9]+(?:\.[0-9]+)?)\s*reps?)?""", RegexOption.IGNORE_CASE).find(text)
+    if (dropMatch != null) {
+      dropWeight = dropMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+      dropReps = dropMatch.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 4.0
+    }
+
+    // Pattern 1: 80kg 3x8 or 80 kg 3x8.5 or 80kg x 3x8 or 80lbs 3x8
+    val patternSetsX = Regex("([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?\\s*(?:for)?\\s*([0-9]+)\\s*(?:x|sets?\\s*(?:of)?)\\s*([0-9]+(?:\\.[0-9]+)?)", RegexOption.IGNORE_CASE)
     val matchSetsX = patternSetsX.find(text)
     if (matchSetsX != null) {
       val weight = matchSetsX.groupValues[1].toDoubleOrNull() ?: 50.0
       val numSets = matchSetsX.groupValues[2].toIntOrNull() ?: 3
-      val reps = matchSetsX.groupValues[3].toIntOrNull() ?: 10
+      val reps = matchSetsX.groupValues[3].toDoubleOrNull() ?: 10.0
       repeat(numSets.coerceIn(1, 10)) {
-        results.add(ParsedSetLog(weightKg = weight, reps = reps))
+        results.add(
+          ParsedSetLog(
+            weightKg = weight,
+            reps = reps,
+            biofeedbackTags = bioString,
+            tempo = tempo,
+            failurePoint = failurePoint,
+            dropWeightKg = dropWeight,
+            dropReps = dropReps
+          )
+        )
       }
       return results
     }
 
-    // Pattern 2: 3x8 @ 80kg or 3 sets of 10 at 100kg
-    val patternSetsAt = Regex("([0-9]+)\\s*(?:x|sets?\\s*(?:of)?)\\s*([0-9]+)\\s*(?:reps?)?\\s*(?:@|at)\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?", RegexOption.IGNORE_CASE)
+    // Pattern 2: 3x8.5 @ 80kg or 3 sets of 10 at 100kg
+    val patternSetsAt = Regex("([0-9]+)\\s*(?:x|sets?\\s*(?:of)?)\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:reps?)?\\s*(?:@|at)\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?", RegexOption.IGNORE_CASE)
     val matchSetsAt = patternSetsAt.find(text)
     if (matchSetsAt != null) {
       val numSets = matchSetsAt.groupValues[1].toIntOrNull() ?: 3
-      val reps = matchSetsAt.groupValues[2].toIntOrNull() ?: 10
+      val reps = matchSetsAt.groupValues[2].toDoubleOrNull() ?: 10.0
       val weight = matchSetsAt.groupValues[3].toDoubleOrNull() ?: 50.0
       repeat(numSets.coerceIn(1, 10)) {
-        results.add(ParsedSetLog(weightKg = weight, reps = reps))
+        results.add(
+          ParsedSetLog(
+            weightKg = weight,
+            reps = reps,
+            biofeedbackTags = bioString,
+            tempo = tempo,
+            failurePoint = failurePoint,
+            dropWeightKg = dropWeight,
+            dropReps = dropReps
+          )
+        )
       }
       return results
     }
 
-    // Pattern 3: 30kg 10, 10, 8 reps or 30kg 10 10 8
-    val patternList = Regex("([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?\\s*(?:for)?\\s*([0-9]+(?:\\s*[,\\s]\\s*[0-9]+)+)", RegexOption.IGNORE_CASE)
+    // Pattern 3: 30kg 10, 10, 8.5 reps or 30kg 10 10 8.5
+    val patternList = Regex("([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?\\s*(?:for)?\\s*([0-9]+(?:\\.[0-9]+)?(?:\\s*[,\\s]\\s*[0-9]+(?:\\.[0-9]+)?)+)", RegexOption.IGNORE_CASE)
     val matchList = patternList.find(text)
     if (matchList != null) {
       val weight = matchList.groupValues[1].toDoubleOrNull() ?: 40.0
       val repsPart = matchList.groupValues[2]
-      val repsTokens = repsPart.split(Regex("[,\\s]+")).mapNotNull { it.toIntOrNull() }
+      val repsTokens = repsPart.split(Regex("[,\\s]+")).mapNotNull { it.toDoubleOrNull() }
       if (repsTokens.isNotEmpty()) {
         for (r in repsTokens) {
-          if (r in 1..100) {
-            results.add(ParsedSetLog(weightKg = weight, reps = r))
+          if (r in 0.5..100.0) {
+            results.add(
+              ParsedSetLog(
+                weightKg = weight,
+                reps = r,
+                biofeedbackTags = bioString,
+                tempo = tempo,
+                failurePoint = failurePoint,
+                dropWeightKg = dropWeight,
+                dropReps = dropReps
+              )
+            )
           }
         }
         if (results.isNotEmpty()) return results
       }
     }
 
-    // Pattern 4: Simple single set: 80kg 8 reps or 80kg for 8
-    val patternSingle = Regex("([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?\\s*(?:for)?\\s*([0-9]+)\\s*(?:reps?)?", RegexOption.IGNORE_CASE)
+    // Pattern 4: Simple single set: 80kg 8.5 reps or 80kg for 6.5
+    val patternSingle = Regex("([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?\\s*(?:for)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:reps?)?", RegexOption.IGNORE_CASE)
     val matchSingle = patternSingle.find(text)
     if (matchSingle != null) {
       val weight = matchSingle.groupValues[1].toDoubleOrNull() ?: 50.0
-      val reps = matchSingle.groupValues[2].toIntOrNull() ?: 8
-      results.add(ParsedSetLog(weightKg = weight, reps = reps))
+      val reps = matchSingle.groupValues[2].toDoubleOrNull() ?: 8.0
+      results.add(
+        ParsedSetLog(
+          weightKg = weight,
+          reps = reps,
+          biofeedbackTags = bioString,
+          tempo = tempo,
+          failurePoint = failurePoint,
+          dropWeightKg = dropWeight,
+          dropReps = dropReps
+        )
+      )
       return results
     }
 
     // Default fallback sets
-    results.add(ParsedSetLog(weightKg = 50.0, reps = 10))
-    results.add(ParsedSetLog(weightKg = 50.0, reps = 10))
-    results.add(ParsedSetLog(weightKg = 50.0, reps = 8))
+    results.add(ParsedSetLog(weightKg = 50.0, reps = 10.0, biofeedbackTags = bioString, tempo = tempo))
+    results.add(ParsedSetLog(weightKg = 50.0, reps = 10.0, biofeedbackTags = bioString, tempo = tempo))
+    results.add(ParsedSetLog(weightKg = 50.0, reps = 8.0, biofeedbackTags = bioString, tempo = tempo))
     return results
   }
 }

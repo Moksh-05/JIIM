@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
     RoutineTemplate::class,
     BodyWeightLog::class
   ],
-  version = 4,
+  version = 5,
   exportSchema = false
 )
 abstract class GymDatabase : RoomDatabase() {

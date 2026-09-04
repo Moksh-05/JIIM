@@ -40,10 +40,16 @@ data class SetLog(
   val exerciseLogId: Long,
   val setNumber: Int,
   val weightKg: Double,
-  val reps: Int,
-  val setKind: String = "NORMAL", // NORMAL, WARMUP, DROP, PR
+  val reps: Double,
+  val setKind: String = "NORMAL", // NORMAL, WARMUP, WORKING, DROP, PARTIAL, FAILURE
   val isCompleted: Boolean = true,
-  val isPr: Boolean = false
+  val isPr: Boolean = false,
+  val side: String = "BOTH", // BOTH, LEFT, RIGHT (Unilateral tracking)
+  val biofeedbackTags: String = "", // e.g. "Grip Failure,Form Breakdown,Asymmetry"
+  val tempo: String = "", // e.g. "3-1-1-0" or "Explosive positive, controlled negative"
+  val failurePoint: String = "", // e.g. "Failed at 6.5 reps (mid-concentric)"
+  val dropWeightKg: Double = 0.0,
+  val dropReps: Double = 0.0
 )
 
 data class ExerciseWithSets(
@@ -69,7 +75,7 @@ data class WorkoutWithExercises(
 data class ExercisePr(
   @PrimaryKey val exerciseName: String,
   val weightKg: Double,
-  val reps: Int,
+  val reps: Double,
   val estimated1RmKg: Double,
   val dateAchieved: Long
 )
@@ -86,7 +92,7 @@ data class BodyWeightLog(
 data class RoutineTemplate(
   @PrimaryKey(autoGenerate = true) val id: Long = 0,
   val title: String,
-  val splitGroup: String, // "Push Pull Legs", "Upper Lower", "Arnold Split", "AI-Detected Split", "Custom Split"
+  val splitGroup: String, // "Push Pull Legs", "Upper Lower", "Arnold Split", "Smart Split", "Custom Split"
   val description: String,
   val exercisesCsv: String // e.g. "Barbell Bench Press,Incline Dumbbell Press,Overhead Press"
 )
@@ -103,13 +109,21 @@ data class ParsedWorkoutRant(
 
 data class ParsedExerciseLog(
   val exerciseName: String,
-  val sets: List<ParsedSetLog>
+  val sets: List<ParsedSetLog>,
+  val isUnilateral: Boolean = false,
+  val notes: String = ""
 )
 
 data class ParsedSetLog(
   val weightKg: Double,
-  val reps: Int,
-  val setKind: String = "NORMAL"
+  val reps: Double,
+  val setKind: String = "NORMAL",
+  val side: String = "BOTH", // BOTH, LEFT, RIGHT
+  val biofeedbackTags: String = "",
+  val tempo: String = "",
+  val failurePoint: String = "",
+  val dropWeightKg: Double = 0.0,
+  val dropReps: Double = 0.0
 )
 
 data class AiProgressAnalysis(

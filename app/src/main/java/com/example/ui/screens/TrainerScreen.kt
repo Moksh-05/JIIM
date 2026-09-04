@@ -31,7 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ArrowOutward
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
@@ -71,6 +71,10 @@ import com.example.ui.theme.TitaniumWhite
 import com.example.viewmodel.GymViewModel
 import com.example.viewmodel.TrainerMessage
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.example.data.GeminiChatModel
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TrainerScreen(
@@ -81,6 +85,7 @@ fun TrainerScreen(
   val isTyping by viewModel.isTrainerTyping.collectAsState()
   val profile by viewModel.userProfile.collectAsState()
   val isOnline by viewModel.isOnline.collectAsState()
+  val selectedModel by viewModel.selectedChatModel.collectAsState()
 
   var inputText by remember { mutableStateOf("") }
   val listState = rememberLazyListState()
@@ -100,82 +105,132 @@ fun TrainerScreen(
       .testTag("trainer_screen")
   ) {
     Column(modifier = Modifier.fillMaxSize()) {
-      // Top Coach Header
+      // Top Jim Header
       Surface(
         color = SurfaceDark,
         border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
         modifier = Modifier.fillMaxWidth()
       ) {
-        Row(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically
-        ) {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-              modifier = Modifier
-                .size(46.dp)
-                .clip(CircleShape)
-                .background(
-                  Brush.linearGradient(
-                    listOf(Color(0xFF2E3440), Color(0xFF1E222B))
+        Column {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 18.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Box(
+                modifier = Modifier
+                  .size(44.dp)
+                  .clip(CircleShape)
+                  .background(
+                    Brush.linearGradient(
+                      listOf(Color(0xFF2E3440), Color(0xFF1E222B))
+                    )
                   )
+                  .border(1.5.dp, TitaniumSilver, CircleShape),
+                contentAlignment = Alignment.Center
+              ) {
+                Text(
+                  text = "JIM",
+                  fontSize = 14.sp,
+                  fontWeight = FontWeight.Black,
+                  color = TitaniumWhite,
+                  letterSpacing = 1.sp
                 )
-                .border(1.5.dp, TitaniumSilver, CircleShape),
-              contentAlignment = Alignment.Center
-            ) {
-              Text(
-                text = "JIIM",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Black,
-                color = TitaniumWhite,
-                letterSpacing = 1.sp
-              )
+              }
+
+              Spacer(modifier = Modifier.width(12.dp))
+
+              Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Text(
+                    text = "JIM • AI TRAINER",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    letterSpacing = 0.5.sp
+                  )
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Box(
+                    modifier = Modifier
+                      .clip(RoundedCornerShape(6.dp))
+                      .background(Color(0xFF10B981).copy(alpha = 0.15f))
+                      .border(1.dp, Color(0xFF10B981).copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                      .padding(horizontal = 6.dp, vertical = 2.dp)
+                  ) {
+                    Text(
+                      text = if (isOnline) "GEMINI ONLINE" else "LOCAL ENGINE",
+                      fontSize = 9.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = Color(0xFF10B981)
+                    )
+                  }
+                }
+                Text(
+                  text = "Personal Biomechanics & Overload Strategist",
+                  fontSize = 12.sp,
+                  color = TextSecondary
+                )
+              }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            IconButton(
+              onClick = { viewModel.resetTrainerChat() },
+              modifier = Modifier.size(36.dp)
+            ) {
+              Icon(Icons.Default.Refresh, contentDescription = "Reset Chat", tint = TextSecondary)
+            }
+          }
 
-            Column {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                  text = "JIIM AI • GYM COACH",
-                  fontSize = 15.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = TextPrimary,
-                  letterSpacing = 0.5.sp
+          // Gemini Model Selector
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState())
+              .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            GeminiChatModel.values().forEach { model ->
+              val isSelected = selectedModel == model
+              Surface(
+                onClick = { viewModel.setChatModel(model) },
+                shape = RoundedCornerShape(8.dp),
+                color = if (isSelected) CardElevated else Color.Transparent,
+                border = androidx.compose.foundation.BorderStroke(
+                  1.dp,
+                  if (isSelected) TitaniumSilver else BorderSubtle
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(
-                  modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF10B981).copy(alpha = 0.15f))
-                    .border(1.dp, Color(0xFF10B981).copy(alpha = 0.4f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                  verticalAlignment = Alignment.CenterVertically
                 ) {
+                  Box(
+                    modifier = Modifier
+                      .size(6.dp)
+                      .clip(CircleShape)
+                      .background(if (isSelected) Color(0xFF10B981) else TextSecondary)
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
                   Text(
-                    text = if (isOnline) "ONLINE" else "LOCAL ENGINE",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF10B981)
+                    text = model.displayName,
+                    fontSize = 11.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isSelected) TitaniumWhite else TextSecondary
+                  )
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text(
+                    text = "• ${model.badge}",
+                    fontSize = 10.sp,
+                    color = if (isSelected) TitaniumSilver else TextSecondary.copy(alpha = 0.7f)
                   )
                 }
               }
-              Text(
-                text = "Targeting ${profile.fitnessGoal}",
-                fontSize = 12.sp,
-                color = TextSecondary
-              )
             }
           }
-
-          IconButton(
-            onClick = { viewModel.resetTrainerChat() },
-            modifier = Modifier.size(36.dp)
-          ) {
-            Icon(Icons.Default.Refresh, contentDescription = "Reset Chat", tint = TextSecondary)
-          }
+          Spacer(modifier = Modifier.height(4.dp))
         }
       }
 
@@ -207,7 +262,7 @@ fun TrainerScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                  text = "JIIM AI'S INSIGHT FOCUS",
+                  text = "JIM'S STRATEGY FOCUS",
                   fontSize = 12.sp,
                   fontWeight = FontWeight.Bold,
                   color = TitaniumSilver,
@@ -216,7 +271,7 @@ fun TrainerScreen(
               }
               Spacer(modifier = Modifier.height(6.dp))
               Text(
-                text = "I continuously evaluate your recovery, sleep duration, and training soreness to tailor your daily volume and prevent plateaus. Tap any quick reply or type below!",
+                text = "I analyze your volume, progressive overload, mechanical tension, and recovery metrics. Ask me any biomechanics question, request custom mesocycle programming, or tap a suggestion below.",
                 fontSize = 12.sp,
                 color = TextSecondary,
                 lineHeight = 17.sp
@@ -225,7 +280,7 @@ fun TrainerScreen(
           }
         }
 
-        items(messages) { msg ->
+        items(messages, key = { it.id }) { msg ->
           MessageBubble(
             message = msg,
             onFollowUpClicked = { followUpText ->
@@ -247,7 +302,7 @@ fun TrainerScreen(
               )
               Spacer(modifier = Modifier.width(10.dp))
               Text(
-                text = "JIIM AI is analyzing biomechanics...",
+                text = "Jim is analyzing biomechanics...",
                 fontSize = 12.sp,
                 color = TextSecondary
               )
@@ -274,7 +329,7 @@ fun TrainerScreen(
             listOf(
               "Check recovery today",
               "Bench press sticking point",
-              "Squat knee path cues",
+              "Design 4-day hypertrophy split",
               "Deload week signs"
             ).forEach { prompt ->
               Surface(
@@ -288,7 +343,7 @@ fun TrainerScreen(
                   verticalAlignment = Alignment.CenterVertically
                 ) {
                   Icon(
-                    Icons.Default.AutoAwesome,
+                    Icons.Default.ArrowOutward,
                     contentDescription = null,
                     tint = TitaniumSilver,
                     modifier = Modifier.size(12.dp)
@@ -313,7 +368,7 @@ fun TrainerScreen(
             OutlinedTextField(
               value = inputText,
               onValueChange = { inputText = it },
-              placeholder = { Text("Ask JIIM AI (e.g. My chest is sore, what to train?)", color = TextSecondary, fontSize = 13.sp) },
+              placeholder = { Text("Ask Jim (e.g. How to break my bench press plateau?)", color = TextSecondary, fontSize = 13.sp) },
               modifier = Modifier
                 .weight(1f)
                 .testTag("trainer_input_field"),
@@ -368,24 +423,32 @@ private fun MessageBubble(
   message: TrainerMessage,
   onFollowUpClicked: (String) -> Unit
 ) {
-  val isJiim = message.sender == "JIIM AI" || message.sender == "JJ"
+  val isJim = message.sender == "JIM" || message.sender == "JIIM AI" || message.sender == "JJ" || message.sender == "COACH"
 
   Column(
     modifier = Modifier.fillMaxWidth(),
-    horizontalAlignment = if (isJiim) Alignment.Start else Alignment.End
+    horizontalAlignment = if (isJim) Alignment.Start else Alignment.End
   ) {
-    if (isJiim) {
+    if (isJim) {
       Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
       ) {
         Text(
-          text = "JIIM AI • COACH",
+          text = "JIM",
           fontSize = 11.sp,
           fontWeight = FontWeight.Bold,
           color = TitaniumSilver,
           letterSpacing = 0.5.sp
         )
+        if (!message.modelTag.isNullOrBlank()) {
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "• ${message.modelTag}",
+            fontSize = 9.sp,
+            color = TextSecondary
+          )
+        }
       }
     }
 
@@ -393,16 +456,16 @@ private fun MessageBubble(
       shape = RoundedCornerShape(
         topStart = 16.dp,
         topEnd = 16.dp,
-        bottomStart = if (isJiim) 4.dp else 16.dp,
-        bottomEnd = if (isJiim) 16.dp else 4.dp
+        bottomStart = if (isJim) 4.dp else 16.dp,
+        bottomEnd = if (isJim) 16.dp else 4.dp
       ),
-      color = if (isJiim) CardDark else SurfaceDark,
+      color = if (isJim) CardDark else SurfaceDark,
       border = androidx.compose.foundation.BorderStroke(
         1.dp,
-        if (isJiim) BorderHighlight else BorderSubtle
+        if (isJim) BorderHighlight else BorderSubtle
       ),
       modifier = Modifier
-        .fillMaxWidth(if (isJiim) 0.95f else 0.85f)
+        .fillMaxWidth(if (isJim) 0.95f else 0.85f)
         .testTag("chat_bubble_${message.id}")
     ) {
       Column(modifier = Modifier.padding(14.dp)) {
@@ -413,8 +476,8 @@ private fun MessageBubble(
           lineHeight = 20.sp
         )
 
-        // Probing follow-up chips if provided by JIIM AI
-        if (isJiim && message.promptFollowUps.isNotEmpty()) {
+        // Probing follow-up chips if provided by Jim
+        if (isJim && message.promptFollowUps.isNotEmpty()) {
           Spacer(modifier = Modifier.height(12.dp))
           Text(
             text = "TAP QUICK RESPONSE:",

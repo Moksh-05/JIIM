@@ -85,8 +85,8 @@ fun AndroidGuideScreen(
     item {
       ExpandableStepCard(
         stepNumber = "1",
-        title = "Test & Use in AI Studio",
-        subtitle = "Zero setup needed to test tracking and AI features",
+        title = "Test & Preview in Web Emulator",
+        subtitle = "Zero setup needed to test tracking and smart features",
         accentColor = VoltLime,
         initialExpanded = true,
         content = {
@@ -112,7 +112,7 @@ fun AndroidGuideScreen(
         initialExpanded = true,
         content = {
           Text(
-            text = "• In the top-right menu of Google AI Studio, select 'Download Project as ZIP' or push to GitHub.\n" +
+            text = "• In the top-right menu of the studio workspace, select 'Download Project as ZIP' or push to GitHub.\n" +
               "• To build an installable APK on your computer, run in the root directory:\n" +
               "   ./gradlew assembleDebug\n" +
               "• The output installer file is generated at:\n" +
@@ -203,7 +203,7 @@ fun AndroidGuideScreen(
             }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-              text = "CUSTOM SPLIT & AI ANALYSIS",
+              text = "CUSTOM SPLIT & INTELLIGENT ANALYSIS",
               style = MaterialTheme.typography.labelSmall,
               fontWeight = FontWeight.Bold,
               color = Color.White,
@@ -215,7 +215,7 @@ fun AndroidGuideScreen(
 
           Text(
             text = "• JIIM runs offline by default for seamless logging anywhere.\n" +
-              "• Over 1-2 weeks, JIIM AI identifies workout trends (e.g. chest/triceps, biceps/shoulders, legs/abs) and codifies them into your personalized split.\n" +
+              "• Over 1-2 weeks, Jim (the Gemini-powered coach) identifies workout trends (e.g. chest/triceps, biceps/shoulders, legs/abs) and codifies them into your personalized split.\n" +
               "• In the Progress tab, your weekly hypertrophy volumes and progressive overload trajectories are calculated automatically.",
             color = Color(0xFFCBD5E1),
             fontSize = 12.sp,

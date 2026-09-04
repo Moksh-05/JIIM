@@ -77,8 +77,8 @@ import com.example.viewmodel.GymViewModel
 import com.example.viewmodel.GymViewModelFactory
 
 enum class AppTab(val title: String, val icon: ImageVector, val tag: String) {
-  WORKOUTS("Workout", Icons.Default.FitnessCenter, "nav_workouts_tab"),
-  TRAINER("JIIM AI", Icons.Default.Psychology, "nav_trainer_tab"),
+  WORKOUTS("Workouts", Icons.Default.FitnessCenter, "nav_workouts_tab"),
+  TRAINER("Jim", Icons.Default.Psychology, "nav_trainer_tab"),
   PROGRESS("Progress", Icons.Default.TrendingUp, "nav_progress_tab"),
   PROFILE("Profile", Icons.Default.Person, "nav_profile_tab")
 }
@@ -157,7 +157,7 @@ fun GymTrackerApp() {
               )
               Spacer(modifier = Modifier.width(5.dp))
               Text(
-                text = if (isOnline) "AI Active" else "Offline",
+                text = if (isOnline) "Connected" else "Local",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = TitaniumSilver

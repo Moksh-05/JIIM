@@ -23,11 +23,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.Refresh
@@ -470,10 +470,8 @@ fun ProgressScreen(
     }
 
     // =============================================================
-    // METRIC 3: AI & DATA ANALYSIS: PLATEAUS & FORM FIXES (PAST 2-3 WEEKS)
-    // User requested: "3. The AI, or just the data, being analyzed and seeing
-    // what exercises I'm plateauing on and what form I need to fix based on my
-    // previous two to three weeks' suggestions."
+    // METRIC 3: PROGRESSION & DATA ANALYSIS: PLATEAUS & FORM FIXES (PAST 2-3 WEEKS)
+    // Automated analysis of workout data to identify plateauing exercises and form tips
     // =============================================================
     item {
       Card(
@@ -497,7 +495,7 @@ fun ProgressScreen(
                 contentAlignment = Alignment.Center
               ) {
                 Icon(
-                  imageVector = Icons.Default.AutoAwesome,
+                  imageVector = Icons.Default.Insights,
                   contentDescription = null,
                   tint = TitaniumWhite,
                   modifier = Modifier.size(17.dp)
@@ -663,7 +661,7 @@ fun ProgressScreen(
             ) {
               Column(modifier = Modifier.padding(12.dp)) {
                 Text(
-                  text = "AI PROGRESSION VERDICT",
+                  text = "PROGRESSION STRATEGY VERDICT",
                   fontSize = 10.sp,
                   fontWeight = FontWeight.Bold,
                   letterSpacing = 0.5.sp,

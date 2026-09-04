@@ -39,12 +39,21 @@ import kotlin.math.roundToInt
 data class ActiveSetLog(
   val setNumber: Int,
   val weightKg: Double,
-  val reps: Int
+  val reps: Double,
+  val setKind: String = "NORMAL",
+  val side: String = "BOTH", // "BOTH", "LEFT", "RIGHT"
+  val biofeedbackTags: List<String> = emptyList(),
+  val tempo: String = "",
+  val failurePoint: String = "",
+  val dropWeightKg: Double = 0.0,
+  val dropReps: Double = 0.0
 )
 
 data class ActiveExerciseLog(
   val exerciseName: String,
-  val sets: List<ActiveSetLog>
+  val sets: List<ActiveSetLog>,
+  val isUnilateral: Boolean = false,
+  val notes: String = ""
 )
 
 data class OverloadTarget(
@@ -60,7 +69,7 @@ data class ExerciseSessionPoint(
   val dateMillis: Long,
   val sessionName: String,
   val topWeightKg: Double,
-  val totalReps: Int,
+  val totalReps: Double,
   val totalSets: Int,
   val estimated1Rm: Double,
   val isOverloadComparedToPrevious: Boolean
@@ -84,10 +93,11 @@ data class RamblerClarification(
 
 data class TrainerMessage(
   val id: Long = System.currentTimeMillis(),
-  val sender: String, // "JIIM AI" or "USER"
+  val sender: String, // "JIM" or "USER"
   val text: String,
   val timestamp: Long = System.currentTimeMillis(),
-  val promptFollowUps: List<String> = emptyList()
+  val promptFollowUps: List<String> = emptyList(),
+  val modelTag: String? = null
 )
 
 class GymViewModel(application: Application) : AndroidViewModel(application) {
@@ -211,21 +221,29 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   // -------------------------------------------------------------
-  // JIIM AI TRAINER CONVERSATION & INSIGHT GATHERING
+  // JIM (GEMINI CHATBOT) CONVERSATION & INSIGHT GATHERING
   // -------------------------------------------------------------
+  private val _selectedChatModel = MutableStateFlow(com.example.data.GeminiChatModel.FLASH)
+  val selectedChatModel: StateFlow<com.example.data.GeminiChatModel> = _selectedChatModel.asStateFlow()
+
+  fun setChatModel(model: com.example.data.GeminiChatModel) {
+    _selectedChatModel.value = model
+  }
+
   private val _trainerMessages = MutableStateFlow<List<TrainerMessage>>(
     listOf(
       TrainerMessage(
         id = 1L,
-        sender = "JIIM AI",
-        text = "Yo! I'm JIIM AI, your AI Gym Coach & Biomechanics Specialist. I'm here to analyze your lifting, dial in progressive overload, and break through any plateaus.\n\nTo optimize today's session: How did you sleep last night, and which muscle group feels the most sore or tight right now?",
+        sender = "JIM",
+        text = "Welcome to your training headquarters. I'm Jim, your strength and biomechanics coach powered by Gemini. I'm here to analyze your lifting, dial in progressive overload, and break through any plateaus.\n\nTo optimize today's session: How did you sleep last night, and which muscle group feels the most sore or tight right now?",
         promptFollowUps = listOf(
           "Slept 7-8h, feeling recovered",
           "Chest & shoulders are sore",
           "Legs are still fatigued",
           "What split should I run today?",
           "How to hit a new Bench PR?"
-        )
+        ),
+        modelTag = "Gemini 3.5 Flash"
       )
     )
   )
@@ -248,27 +266,46 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
         val recentWorkouts = allWorkouts.value.take(3).joinToString("\n") {
           "- ${it.session.name} (${it.session.totalVolumeKg.toInt()}kg, ${it.session.totalSets} sets)"
         }
-        val conversationHistory = current.takeLast(6).joinToString("\n") { "${it.sender}: ${it.text}" }
 
-        val (reply, followUps) = geminiService.chatWithTrainerJJ(
+        // Determine active model based on user selection or complexity
+        val activeModel = when {
+          _selectedChatModel.value == com.example.data.GeminiChatModel.PRO -> com.example.data.GeminiChatModel.PRO
+          _selectedChatModel.value == com.example.data.GeminiChatModel.FLASH_LITE -> com.example.data.GeminiChatModel.FLASH_LITE
+          messageText.contains("program", ignoreCase = true) ||
+          messageText.contains("periodiz", ignoreCase = true) ||
+          messageText.contains("mesocycle", ignoreCase = true) ||
+          messageText.contains("plateau breakdown", ignoreCase = true) -> com.example.data.GeminiChatModel.PRO
+          messageText.contains("quick", ignoreCase = true) ||
+          messageText.contains("fast", ignoreCase = true) ||
+          messageText.contains("cue", ignoreCase = true) -> com.example.data.GeminiChatModel.FLASH_LITE
+          else -> _selectedChatModel.value
+        }
+
+        // Multi-turn conversation history turns
+        val historyTurns = current.map { Pair(it.sender, it.text) }
+
+        val (reply, followUps) = geminiService.chatWithJim(
+          historyTurns = historyTurns,
           userMessage = messageText,
-          historyContext = conversationHistory,
           lifterProfile = profileSummary,
           recentWorkoutSummary = recentWorkouts,
+          model = activeModel,
           isOnline = isOnline.value
         )
 
-        val coachMsg = TrainerMessage(
-          sender = "JIIM AI",
+        val jimMsg = TrainerMessage(
+          sender = "JIM",
           text = reply,
-          promptFollowUps = followUps
+          promptFollowUps = followUps,
+          modelTag = activeModel.displayName
         )
-        _trainerMessages.value = _trainerMessages.value + coachMsg
+        _trainerMessages.value = _trainerMessages.value + jimMsg
       } catch (e: Exception) {
         val fallback = TrainerMessage(
-          sender = "JIIM AI",
-          text = "Form and progressive overload come first. Make sure your eccentric control is at 2-3 seconds to maximize mechanical tension.\n\nJIIM AI's Insight Question: What specific lift are you tackling next?",
-          promptFollowUps = listOf("Barbell Bench Press", "Barbell Back Squat", "Barbell Deadlift", "Overhead Press")
+          sender = "JIM",
+          text = "Form and progressive overload come first. Make sure your eccentric control is at 2-3 seconds to maximize mechanical tension.\n\nJim's Question: What specific lift are you tackling next?",
+          promptFollowUps = listOf("Barbell Bench Press", "Barbell Back Squat", "Barbell Deadlift", "Overhead Press"),
+          modelTag = "Offline Coach"
         )
         _trainerMessages.value = _trainerMessages.value + fallback
       } finally {
@@ -281,14 +318,15 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
     _trainerMessages.value = listOf(
       TrainerMessage(
         id = System.currentTimeMillis(),
-        sender = "JIIM AI",
-        text = "Fresh workout session! I'm JIIM AI, your AI Coach. How is your energy level right now, and what are we training today?",
+        sender = "JIM",
+        text = "Fresh workout session! I'm Jim, your strength coach powered by Gemini. How is your energy level right now, and what are we training today?",
         promptFollowUps = listOf(
           "Energy is 9/10, ready to PR",
           "A bit fatigued, need a warm-up",
           "Push Day • Chest & Triceps",
           "Pull Day • Back & Biceps"
-        )
+        ),
+        modelTag = _selectedChatModel.value.displayName
       )
     )
   }
@@ -333,34 +371,127 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   private val _activeExercises = MutableStateFlow<List<ActiveExerciseLog>>(emptyList())
   val activeExercises: StateFlow<List<ActiveExerciseLog>> = _activeExercises.asStateFlow()
 
-  fun addSetToActiveSession(exerciseName: String, weightKg: Double, reps: Int) {
+  fun addSetToActiveSession(
+    exerciseName: String,
+    weightKg: Double,
+    reps: Double,
+    setKind: String = "NORMAL",
+    side: String = "BOTH",
+    biofeedbackTags: List<String> = emptyList(),
+    tempo: String = "",
+    failurePoint: String = "",
+    dropWeightKg: Double = 0.0,
+    dropReps: Double = 0.0,
+    isUnilateral: Boolean = false
+  ) {
     val current = _activeExercises.value.toMutableList()
     val existingIndex = current.indexOfFirst { it.exerciseName.equals(exerciseName, ignoreCase = true) }
 
+    val newSet = ActiveSetLog(
+      setNumber = if (existingIndex >= 0) current[existingIndex].sets.size + 1 else 1,
+      weightKg = weightKg,
+      reps = reps,
+      setKind = setKind,
+      side = side,
+      biofeedbackTags = biofeedbackTags,
+      tempo = tempo,
+      failurePoint = failurePoint,
+      dropWeightKg = dropWeightKg,
+      dropReps = dropReps
+    )
+
     if (existingIndex >= 0) {
       val existing = current[existingIndex]
-      val newSetNumber = existing.sets.size + 1
-      val updatedSets = existing.sets + ActiveSetLog(
-        setNumber = newSetNumber,
-        weightKg = weightKg,
-        reps = reps
+      val updatedSets = existing.sets + newSet
+      current[existingIndex] = existing.copy(
+        sets = updatedSets,
+        isUnilateral = existing.isUnilateral || isUnilateral
       )
-      current[existingIndex] = existing.copy(sets = updatedSets)
     } else {
       current.add(
         ActiveExerciseLog(
           exerciseName = exerciseName,
-          sets = listOf(
-            ActiveSetLog(
-              setNumber = 1,
-              weightKg = weightKg,
-              reps = reps
-            )
-          )
+          sets = listOf(newSet),
+          isUnilateral = isUnilateral
         )
       )
     }
     _activeExercises.value = current
+  }
+
+  fun addSetToActiveSession(exerciseName: String, weightKg: Double, reps: Int) {
+    addSetToActiveSession(exerciseName, weightKg, reps.toDouble())
+  }
+
+  fun toggleExerciseUnilateral(exerciseIndex: Int) {
+    val current = _activeExercises.value.toMutableList()
+    if (exerciseIndex in current.indices) {
+      val ex = current[exerciseIndex]
+      current[exerciseIndex] = ex.copy(isUnilateral = !ex.isUnilateral)
+      _activeExercises.value = current
+    }
+  }
+
+  fun toggleBiofeedbackTag(exerciseIndex: Int, setIndex: Int, tag: String) {
+    val current = _activeExercises.value.toMutableList()
+    if (exerciseIndex in current.indices) {
+      val ex = current[exerciseIndex]
+      val sets = ex.sets.toMutableList()
+      if (setIndex in sets.indices) {
+        val s = sets[setIndex]
+        val newTags = if (s.biofeedbackTags.contains(tag)) {
+          s.biofeedbackTags - tag
+        } else {
+          s.biofeedbackTags + tag
+        }
+        sets[setIndex] = s.copy(biofeedbackTags = newTags)
+        current[exerciseIndex] = ex.copy(sets = sets)
+        _activeExercises.value = current
+      }
+    }
+  }
+
+  fun setSetSide(exerciseIndex: Int, setIndex: Int, side: String) {
+    val current = _activeExercises.value.toMutableList()
+    if (exerciseIndex in current.indices) {
+      val ex = current[exerciseIndex]
+      val sets = ex.sets.toMutableList()
+      if (setIndex in sets.indices) {
+        sets[setIndex] = sets[setIndex].copy(side = side)
+        current[exerciseIndex] = ex.copy(sets = sets)
+        _activeExercises.value = current
+      }
+    }
+  }
+
+  fun setFailurePoint(exerciseIndex: Int, setIndex: Int, failurePoint: String) {
+    val current = _activeExercises.value.toMutableList()
+    if (exerciseIndex in current.indices) {
+      val ex = current[exerciseIndex]
+      val sets = ex.sets.toMutableList()
+      if (setIndex in sets.indices) {
+        sets[setIndex] = sets[setIndex].copy(failurePoint = failurePoint)
+        current[exerciseIndex] = ex.copy(sets = sets)
+        _activeExercises.value = current
+      }
+    }
+  }
+
+  fun setMidSetDrop(exerciseIndex: Int, setIndex: Int, dropWeightKg: Double, dropReps: Double) {
+    val current = _activeExercises.value.toMutableList()
+    if (exerciseIndex in current.indices) {
+      val ex = current[exerciseIndex]
+      val sets = ex.sets.toMutableList()
+      if (setIndex in sets.indices) {
+        sets[setIndex] = sets[setIndex].copy(
+          dropWeightKg = dropWeightKg,
+          dropReps = dropReps,
+          setKind = if (dropWeightKg > 0.0) "DROP" else sets[setIndex].setKind
+        )
+        current[exerciseIndex] = ex.copy(sets = sets)
+        _activeExercises.value = current
+      }
+    }
   }
 
   fun removeSetFromActiveSession(exerciseIndex: Int, setIndex: Int) {
@@ -401,8 +532,19 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
       ParsedExerciseLog(
         exerciseName = ex.exerciseName,
         sets = ex.sets.map { s ->
-          ParsedSetLog(weightKg = s.weightKg, reps = s.reps)
-        }
+          ParsedSetLog(
+            weightKg = s.weightKg,
+            reps = s.reps,
+            setKind = s.setKind,
+            side = s.side,
+            biofeedbackTags = s.biofeedbackTags.joinToString(","),
+            tempo = s.tempo,
+            failurePoint = s.failurePoint,
+            dropWeightKg = s.dropWeightKg,
+            dropReps = s.dropReps
+          )
+        },
+        isUnilateral = ex.isUnilateral
       )
     }
 
@@ -422,6 +564,13 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   fun deleteExerciseFromWorkout(exerciseLogId: Long, workoutSessionId: Long) {
     viewModelScope.launch {
       repository.deleteExerciseFromWorkout(exerciseLogId, workoutSessionId)
+      runProgressAnalysis()
+    }
+  }
+
+  fun deleteSetFromWorkout(setId: Long, workoutSessionId: Long) {
+    viewModelScope.launch {
+      repository.deleteSetFromWorkout(setId, workoutSessionId)
       runProgressAnalysis()
     }
   }
@@ -538,7 +687,7 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
                   exerciseName = ex.exerciseName,
                   question = "${datePrefix}What weight did you use for ${ex.exerciseName}?",
                   initialWeightKg = 0.0,
-                  initialReps = ex.sets.firstOrNull()?.reps ?: 10
+                  initialReps = ex.sets.firstOrNull()?.reps?.toInt() ?: 10
                 )
               )
             } else if (zeroRepSets.isNotEmpty()) {
@@ -572,7 +721,7 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
         val updatedSets = ex.sets.map { s ->
           s.copy(
             weightKg = if (s.weightKg <= 0) newWeightKg else s.weightKg,
-            reps = if (s.reps <= 0) newReps else s.reps
+            reps = if (s.reps <= 0) newReps.toDouble() else s.reps
           )
         }
         updatedExercises[exerciseIndex] = ex.copy(sets = updatedSets)
@@ -631,7 +780,7 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   // -------------------------------------------------------------
-  // AI PROGRESS ANALYSIS
+  // SMART PROGRESSION ANALYSIS
   // -------------------------------------------------------------
   private val _isAnalyzing = MutableStateFlow(false)
   val isAnalyzing: StateFlow<Boolean> = _isAnalyzing.asStateFlow()
@@ -874,7 +1023,7 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
         val topSet = matchingEx.sets.maxByOrNull { it.weightKg }
         val est1Rm = if (topSet != null) repository.calculate1Rm(topSet.weightKg, topSet.reps) else 0.0
 
-        val isOverload = topWeight > prevTopWeight || (topWeight == prevTopWeight && totalReps > (points.lastOrNull()?.totalReps ?: 0))
+        val isOverload = topWeight > prevTopWeight || (topWeight == prevTopWeight && totalReps > (points.lastOrNull()?.totalReps ?: 0.0))
 
         points.add(
           ExerciseSessionPoint(

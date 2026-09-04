@@ -4,35 +4,41 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Minimalist, elegant geometric dumbbell on matte black -->
-    <!-- Handle -->
+    <!-- Sleek, precision-engineered geometric dumbbell on dark canvas -->
+    
+    <!-- Central Knurled Bar -->
     <path
-        android:fillColor="#E2E6EE"
-        android:pathData="M34,52h40v4h-40z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,51.5h40v5h-40z" />
 
-    <!-- Left Plates -->
+    <!-- Left Inner Heavy Plate -->
     <path
-        android:fillColor="#9CA3AF"
-        android:pathData="M24,45h4c1.1,0 2,0.9 2,2v14c0,1.1 -0.9,2 -2,2h-4c-1.1,0 -2,-0.9 -2,-2v-14c0,-1.1 0.9,-2 2,-2z" />
-    <path
-        android:fillColor="#F4F5F8"
-        android:pathData="M30,38h5c1.1,0 2,0.9 2,2v28c0,1.1 -0.9,2 -2,2h-5c-1.1,0 -2,-0.9 -2,-2v-28c0,-1.1 0.9,-2 2,-2z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M27,37h5c1.1,0 2,0.9 2,2v30c0,1.1 -0.9,2 -2,2h-5c-1.1,0 -2,-0.9 -2,-2v-30c0,-1.1 0.9,-2 2,-2z" />
 
-    <!-- Left Collars -->
+    <!-- Left Outer Chamfered Plate -->
     <path
-        android:fillColor="#CBD2DE"
-        android:pathData="M37,49h2v10h-2z" />
+        android:fillColor="#94A3B8"
+        android:pathData="M20,43h4c1.1,0 2,0.9 2,2v18c0,1.1 -0.9,2 -2,2h-4c-1.1,0 -2,-0.9 -2,-2v-18c0,-1.1 0.9,-2 2,-2z" />
 
-    <!-- Right Plates -->
+    <!-- Left Precision Machined Collar -->
     <path
-        android:fillColor="#F4F5F8"
-        android:pathData="M73,38h5c1.1,0 2,0.9 2,2v28c0,1.1 -0.9,2 -2,2h-5c-1.1,0 -2,-0.9 -2,-2v-28c0,-1.1 0.9,-2 2,-2z" />
-    <path
-        android:fillColor="#9CA3AF"
-        android:pathData="M80,45h4c1.1,0 2,0.9 2,2v14c0,1.1 -0.9,2 -2,2h-4c-1.1,0 -2,-0.9 -2,-2v-14c0,-1.1 0.9,-2 2,-2z" />
+        android:fillColor="#CBD5E1"
+        android:pathData="M35,48.5h2v11h-2z" />
 
-    <!-- Right Collars -->
+    <!-- Right Inner Heavy Plate -->
     <path
-        android:fillColor="#CBD2DE"
-        android:pathData="M69,49h2v10h-2z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M76,37h5c1.1,0 2,0.9 2,2v30c0,1.1 -0.9,2 -2,2h-5c-1.1,0 -2,-0.9 -2,-2v-30c0,-1.1 0.9,-2 2,-2z" />
+
+    <!-- Right Outer Chamfered Plate -->
+    <path
+        android:fillColor="#94A3B8"
+        android:pathData="M84,43h4c1.1,0 2,0.9 2,2v18c0,1.1 -0.9,2 -2,2h-4c-1.1,0 -2,-0.9 -2,-2v-18c0,-1.1 0.9,-2 2,-2z" />
+
+    <!-- Right Precision Machined Collar -->
+    <path
+        android:fillColor="#CBD5E1"
+        android:pathData="M71,48.5h2v11h-2z" />
 </vector>
+

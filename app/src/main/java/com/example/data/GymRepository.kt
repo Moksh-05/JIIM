@@ -29,13 +29,16 @@ class GymRepository(
     return workoutDao.getWorkoutsBetween(startMillis, endMillis)
   }
 
-  // Calculate 1RM via Brzycki: Weight / (1.0278 - 0.0278 * Reps)
-  fun calculate1Rm(weight: Double, reps: Int): Double {
-    if (reps <= 0 || weight <= 0.0) return 0.0
-    if (reps == 1) return weight
-    val brzycki = weight / (1.0278 - (0.0278 * reps.coerceAtMost(30)))
+  // Calculate 1RM via Brzycki: Weight / (1.0278 - 0.0278 * Reps) supporting fractional reps
+  fun calculate1Rm(weight: Double, reps: Double): Double {
+    if (reps <= 0.0 || weight <= 0.0) return 0.0
+    if (reps == 1.0) return weight
+    val effectiveReps = reps.coerceAtMost(30.0)
+    val brzycki = weight / (1.0278 - (0.0278 * effectiveReps))
     return (brzycki * 10).roundToInt() / 10.0
   }
+
+  fun calculate1Rm(weight: Double, reps: Int): Double = calculate1Rm(weight, reps.toDouble())
 
   suspend fun saveLoggedWorkout(
     rant: ParsedWorkoutRant,
@@ -107,7 +110,13 @@ class GymRepository(
             reps = s.reps,
             setKind = s.setKind,
             isCompleted = true,
-            isPr = isPr
+            isPr = isPr,
+            side = s.side,
+            biofeedbackTags = s.biofeedbackTags,
+            tempo = s.tempo,
+            failurePoint = s.failurePoint,
+            dropWeightKg = s.dropWeightKg,
+            dropReps = s.dropReps
           )
         )
       }
@@ -136,7 +145,7 @@ class GymRepository(
     workoutDao.deleteAllWorkoutSessions()
   }
 
-  suspend fun recordCustomPr(exerciseName: String, weight: Double, reps: Int) = withContext(Dispatchers.IO) {
+  suspend fun recordCustomPr(exerciseName: String, weight: Double, reps: Double) = withContext(Dispatchers.IO) {
     val oneRm = calculate1Rm(weight, reps)
     prDao.upsertPr(
       ExercisePr(
@@ -148,6 +157,8 @@ class GymRepository(
       )
     )
   }
+
+  suspend fun recordCustomPr(exerciseName: String, weight: Double, reps: Int) = recordCustomPr(exerciseName, weight, reps.toDouble())
 
   suspend fun deletePr(exerciseName: String) = withContext(Dispatchers.IO) {
     prDao.deletePr(exerciseName)
@@ -227,6 +238,27 @@ class GymRepository(
           )
         )
       }
+    }
+  }
+
+  suspend fun deleteSetFromWorkout(setId: Long, workoutSessionId: Long) = withContext(Dispatchers.IO) {
+    workoutDao.deleteSetLog(setId)
+    val sessionWithEx = workoutDao.getWorkoutById(workoutSessionId)
+    if (sessionWithEx != null) {
+      var totalVolume = 0.0
+      var totalSets = 0
+      sessionWithEx.exercises.forEach { ex ->
+        ex.sets.forEach { s ->
+          totalSets++
+          totalVolume += (s.weightKg * s.reps)
+        }
+      }
+      workoutDao.updateWorkoutSession(
+        sessionWithEx.session.copy(
+          totalVolumeKg = totalVolume,
+          totalSets = totalSets
+        )
+      )
     }
   }
 }

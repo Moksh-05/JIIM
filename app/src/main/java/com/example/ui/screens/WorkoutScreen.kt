@@ -28,13 +28,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -64,6 +65,7 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,6 +102,7 @@ import com.example.viewmodel.ActiveExerciseLog
 import com.example.viewmodel.GymViewModel
 import com.example.viewmodel.OverloadTarget
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -147,6 +150,15 @@ fun WorkoutScreen(
   var selectedExerciseName by remember { mutableStateOf("Barbell Bench Press") }
   var selectedWeightKg by remember { mutableDoubleStateOf(80.0) }
   var selectedReps by remember { mutableIntStateOf(8) }
+  var hasFractionalRep by remember { mutableStateOf(false) } // +0.5 rep failure point
+  var isUnilateralMode by remember { mutableStateOf(false) }
+  var selectedSide by remember { mutableStateOf("BOTH") } // "BOTH", "LEFT", "RIGHT"
+  var selectedBiofeedbackTags by remember { mutableStateOf<Set<String>>(emptySet()) }
+  var selectedTempo by remember { mutableStateOf("") }
+  var selectedFailurePoint by remember { mutableStateOf("") }
+  var isDropSetExpanded by remember { mutableStateOf(false) }
+  var dropWeightKg by remember { mutableDoubleStateOf(0.0) }
+  var dropReps by remember { mutableDoubleStateOf(4.0) }
   var isExerciseSearchOpen by remember { mutableStateOf(false) }
   var showAddCustomExerciseDialog by remember { mutableStateOf(false) }
 
@@ -156,6 +168,7 @@ fun WorkoutScreen(
     mutableStateOf<Pair<com.example.model.ExerciseWithSets, Long>?>(null)
   }
 
+  var showDirectWeightDialog by remember { mutableStateOf(false) }
   var ramblerInput by remember { mutableStateOf("") }
 
   // Streak calculation
@@ -181,6 +194,74 @@ fun WorkoutScreen(
         ramblerInput = ""
       },
       onDismiss = { viewModel.clearParsedRant() }
+    )
+  }
+
+  if (showDirectWeightDialog) {
+    val displayVal = if (useLbs) (selectedWeightKg * 2.20462) else selectedWeightKg
+    val initialText = if (displayVal % 1.0 == 0.0) displayVal.toInt().toString() else "%.1f".format(displayVal)
+    var weightInputText by remember { mutableStateOf(initialText) }
+
+    AlertDialog(
+      onDismissRequest = { showDirectWeightDialog = false },
+      containerColor = CardElevated,
+      titleContentColor = TitaniumWhite,
+      title = {
+        Text(
+          text = if (useLbs) "SET WEIGHT (LBS)" else "SET WEIGHT (KG)",
+          fontWeight = FontWeight.Bold,
+          fontSize = 15.sp,
+          letterSpacing = 1.sp
+        )
+      },
+      text = {
+        Column {
+          Text(
+            text = "Enter precise load for $selectedExerciseName:",
+            fontSize = 12.sp,
+            color = TextSecondary
+          )
+          Spacer(modifier = Modifier.height(10.dp))
+          OutlinedTextField(
+            value = weightInputText,
+            onValueChange = { weightInputText = it },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedContainerColor = CardDark,
+              unfocusedContainerColor = CardDark,
+              focusedBorderColor = TitaniumWhite,
+              unfocusedBorderColor = BorderSubtle,
+              focusedTextColor = TextPrimary,
+              unfocusedTextColor = TextPrimary
+            ),
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth()
+          )
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            val num = weightInputText.toDoubleOrNull()
+            if (num != null && num >= 0) {
+              selectedWeightKg = if (useLbs) (num / 2.20462) else num
+            }
+            showDirectWeightDialog = false
+          },
+          colors = ButtonDefaults.buttonColors(
+            containerColor = TitaniumWhite,
+            contentColor = MatteBlack
+          ),
+          shape = RoundedCornerShape(8.dp)
+        ) {
+          Text("APPLY", fontWeight = FontWeight.Bold)
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showDirectWeightDialog = false }) {
+          Text("Cancel", color = TextSecondary)
+        }
+      }
     )
   }
 
@@ -246,6 +327,9 @@ fun WorkoutScreen(
     CompletedExerciseDetailDialog(
       exerciseWithSets = exerciseWithSets,
       useLbs = useLbs,
+      onDeleteSet = { setId ->
+        viewModel.deleteSetFromWorkout(setId, sessionId)
+      },
       onDeleteExercise = {
         viewModel.deleteExerciseFromWorkout(exerciseWithSets.exercise.id, sessionId)
         inspectingWorkoutExercise = null
@@ -292,7 +376,7 @@ fun WorkoutScreen(
             )
           }
 
-          // Streak & JIIM Brand Badge
+          // Streak & MacroFactor Consistency Badge
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(
               shape = RoundedCornerShape(10.dp),
@@ -309,6 +393,140 @@ fun WorkoutScreen(
                   fontWeight = FontWeight.Black,
                   color = TitaniumWhite
                 )
+              }
+            }
+          }
+        }
+
+        // MacroFactor-Style Weekly Consistency & Volume Bar
+        val weekAdherence = remember(workouts) {
+          val cal = Calendar.getInstance().apply {
+            firstDayOfWeek = Calendar.MONDAY
+            set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+          }
+          val todayCal = Calendar.getInstance()
+          val dayLetters = listOf("M", "T", "W", "T", "F", "S", "S")
+          val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+          (0..6).map { offset ->
+            val dayCal = (cal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, offset) }
+            val startMs = dayCal.timeInMillis
+            val endMs = startMs + 86400000L
+            val dayWorkouts = workouts.filter { it.session.startTimeMillis in startMs until endMs }
+            val isTrained = dayWorkouts.isNotEmpty()
+            val isToday = dayCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR) &&
+                          dayCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR)
+            val daySets = dayWorkouts.sumOf { it.session.totalSets }
+            object {
+              val letter = dayLetters[offset]
+              val name = dayNames[offset]
+              val trained = isTrained
+              val today = isToday
+              val sets = daySets
+            }
+          }
+        }
+        val trainedDaysCount = remember(weekAdherence) { weekAdherence.count { it.trained } }
+        val weekSetsCount = remember(weekAdherence) { weekAdherence.sumOf { it.sets } }
+
+        Spacer(modifier = Modifier.height(14.dp))
+        Surface(
+          shape = RoundedCornerShape(16.dp),
+          color = SurfaceDark,
+          border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Column {
+                Text(
+                  text = "WEEKLY CONSISTENCY",
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.2.sp,
+                  color = TextSecondary
+                )
+                Text(
+                  text = "$trainedDaysCount of 7 Days Logged",
+                  fontSize = 14.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = TitaniumWhite
+                )
+              }
+
+              Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = CardElevated,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight)
+              ) {
+                Text(
+                  text = "$weekSetsCount Sets This Week",
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = Color(0xFF05DF72),
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+              }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 7-day pill row
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              weekAdherence.forEach { day ->
+                Column(
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  modifier = Modifier.weight(1f)
+                ) {
+                  Text(
+                    text = day.letter,
+                    fontSize = 11.sp,
+                    fontWeight = if (day.today) FontWeight.Black else FontWeight.SemiBold,
+                    color = if (day.today) TitaniumWhite else TextSecondary
+                  )
+                  Spacer(modifier = Modifier.height(6.dp))
+                  Box(
+                    modifier = Modifier
+                      .size(width = 30.dp, height = 18.dp)
+                      .background(
+                        color = if (day.trained) Color(0xFF05DF72) else CardElevated,
+                        shape = RoundedCornerShape(6.dp)
+                      )
+                      .border(
+                        width = if (day.today) 1.5.dp else 0.5.dp,
+                        color = if (day.today) TitaniumWhite else BorderSubtle,
+                        shape = RoundedCornerShape(6.dp)
+                      ),
+                    contentAlignment = Alignment.Center
+                  ) {
+                    if (day.trained) {
+                      Icon(
+                        Icons.Default.Check,
+                        contentDescription = "Trained",
+                        tint = MatteBlack,
+                        modifier = Modifier.size(12.dp)
+                      )
+                    } else if (day.today) {
+                      Box(
+                        modifier = Modifier
+                          .size(5.dp)
+                          .background(TitaniumWhite, CircleShape)
+                      )
+                    }
+                  }
+                }
               }
             }
           }
@@ -701,7 +919,7 @@ fun WorkoutScreen(
             }
           }
 
-          // Method 2: The Rambler AI Card
+          // Method 2: The Rambler Card
           val isMethod2 = selectedLoggingMethod == "RAMBLER"
           Surface(
             onClick = { viewModel.setLoggingMethod("RAMBLER") },
@@ -729,7 +947,7 @@ fun WorkoutScreen(
                   contentAlignment = Alignment.Center
                 ) {
                   Icon(
-                    Icons.Default.AutoAwesome,
+                    Icons.AutoMirrored.Filled.Notes,
                     contentDescription = null,
                     tint = if (isMethod2) MatteBlack else TitaniumSilver,
                     modifier = Modifier.size(18.dp)
@@ -760,7 +978,7 @@ fun WorkoutScreen(
                 color = TextPrimary
               )
               Text(
-                text = "Stream of thoughts via AI",
+                text = "Stream of thoughts text or voice",
                 fontSize = 11.sp,
                 color = TextSecondary
               )
@@ -977,7 +1195,12 @@ fun WorkoutScreen(
               horizontalArrangement = Arrangement.SpaceBetween,
               verticalAlignment = Alignment.CenterVertically
             ) {
-              Column {
+              Column(
+                modifier = Modifier
+                  .clip(RoundedCornerShape(8.dp))
+                  .clickable { showDirectWeightDialog = true }
+                  .padding(4.dp)
+              ) {
                 Text(
                   text = if (useLbs) "WEIGHT (LBS)" else "WEIGHT (KG)",
                   fontSize = 11.sp,
@@ -986,12 +1209,21 @@ fun WorkoutScreen(
                   color = TextSecondary
                 )
                 val displayWeight = if (useLbs) (selectedWeightKg * 2.20462).toInt() else selectedWeightKg.toInt()
-                Text(
-                  text = "$displayWeight ${if (useLbs) "lbs" else "kg"}",
-                  fontSize = 26.sp,
-                  fontWeight = FontWeight.Black,
-                  color = TitaniumWhite
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Text(
+                    text = "$displayWeight ${if (useLbs) "lbs" else "kg"}",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Black,
+                    color = TitaniumWhite
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Icon(
+                    Icons.Default.Edit,
+                    contentDescription = "Edit weight",
+                    tint = PlatinumSteel,
+                    modifier = Modifier.size(14.dp)
+                  )
+                }
               }
 
               // Quick weight adjustment buttons
@@ -1021,14 +1253,52 @@ fun WorkoutScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Rep Wheel Picker
-            Text(
-              text = "REPETITIONS",
-              fontSize = 11.sp,
-              fontWeight = FontWeight.SemiBold,
-              letterSpacing = 1.sp,
-              color = TextSecondary
-            )
+            // Rep Wheel Picker with Fractional Failure Toggle
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Text(
+                text = "REPETITIONS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp,
+                color = TextSecondary
+              )
+
+              // Exact Granular Failure Point Toggle (+0.5 Rep)
+              Surface(
+                onClick = { hasFractionalRep = !hasFractionalRep },
+                shape = RoundedCornerShape(8.dp),
+                color = if (hasFractionalRep) Color(0xFF05DF72).copy(alpha = 0.15f) else CardElevated,
+                border = androidx.compose.foundation.BorderStroke(
+                  1.dp,
+                  if (hasFractionalRep) Color(0xFF05DF72) else BorderSubtle
+                ),
+                modifier = Modifier.testTag("toggle_fractional_rep_btn")
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(
+                    Icons.Default.Bolt,
+                    contentDescription = null,
+                    tint = if (hasFractionalRep) Color(0xFF05DF72) else TitaniumSilver,
+                    modifier = Modifier.size(13.dp)
+                  )
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text(
+                    text = if (hasFractionalRep) "+0.5 Rep (Failure Point: ACTIVE)" else "+0.5 Rep (Exact Failure)",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (hasFractionalRep) Color(0xFF05DF72) else TitaniumSilver
+                  )
+                }
+              }
+            }
+
             Spacer(modifier = Modifier.height(6.dp))
             RepWheelPicker(
               reps = selectedReps,
@@ -1036,15 +1306,318 @@ fun WorkoutScreen(
               modifier = Modifier.fillMaxWidth().testTag("rep_wheel_picker")
             )
 
+            // If fractional failure is toggled, allow specifying exact sticking point
+            AnimatedVisibility(visible = hasFractionalRep) {
+              Column(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                  text = "CONCENTRIC FAILURE STICKING POINT:",
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 0.5.sp,
+                  color = Color(0xFF05DF72)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                FlowRow(
+                  horizontalArrangement = Arrangement.spacedBy(6.dp),
+                  verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                  listOf("Mid-concentric sticking point", "Failed at lockout", "Bottom 1-inch stretch", "Form breakdown failure").forEach { pt ->
+                    val isChosen = selectedFailurePoint == pt
+                    Surface(
+                      onClick = { selectedFailurePoint = if (isChosen) "" else pt },
+                      shape = RoundedCornerShape(6.dp),
+                      color = if (isChosen) Color(0xFF05DF72) else CardElevated,
+                      border = androidx.compose.foundation.BorderStroke(0.5.dp, if (isChosen) Color(0xFF05DF72) else BorderSubtle)
+                    ) {
+                      Text(
+                        text = pt,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isChosen) MatteBlack else TextPrimary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                      )
+                    }
+                  }
+                }
+              }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // UNILATERAL MODE (Independent Limbs)
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                  text = "UNILATERAL / LIMB SPLIT",
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  letterSpacing = 1.sp,
+                  color = TextSecondary
+                )
+              }
+
+              Surface(
+                onClick = { isUnilateralMode = !isUnilateralMode },
+                shape = RoundedCornerShape(8.dp),
+                color = if (isUnilateralMode) TitaniumWhite else CardElevated,
+                border = androidx.compose.foundation.BorderStroke(
+                  1.dp,
+                  if (isUnilateralMode) TitaniumWhite else BorderSubtle
+                ),
+                modifier = Modifier.testTag("toggle_unilateral_btn")
+              ) {
+                Text(
+                  text = if (isUnilateralMode) "UNILATERAL ON" else "BILATERAL",
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = if (isUnilateralMode) MatteBlack else TitaniumSilver,
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+              }
+            }
+
+            if (isUnilateralMode) {
+              Spacer(modifier = Modifier.height(8.dp))
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                listOf("BOTH" to "Both Limbs", "LEFT" to "Left Limb (L)", "RIGHT" to "Right Limb (R)").forEach { (sideKey, sideLabel) ->
+                  val isSideSelected = selectedSide == sideKey
+                  Surface(
+                    onClick = { selectedSide = sideKey },
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isSideSelected) CardElevated else CardDark,
+                    border = androidx.compose.foundation.BorderStroke(
+                      1.dp,
+                      if (isSideSelected) TitaniumWhite else BorderSubtle
+                    ),
+                    modifier = Modifier.weight(1f)
+                  ) {
+                    Box(
+                      modifier = Modifier.padding(vertical = 8.dp),
+                      contentAlignment = Alignment.Center
+                    ) {
+                      Text(
+                        text = sideLabel,
+                        fontSize = 10.sp,
+                        fontWeight = if (isSideSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSideSelected) TitaniumWhite else TextSecondary
+                      )
+                    }
+                  }
+                }
+              }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // BIOFEEDBACK & LIMITING FACTORS
+            Text(
+              text = "BIOFEEDBACK & LIMITING FACTORS",
+              fontSize = 11.sp,
+              fontWeight = FontWeight.SemiBold,
+              letterSpacing = 1.sp,
+              color = TextSecondary
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            FlowRow(
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+              listOf(
+                "Grip Fatigue",
+                "Form Breakdown",
+                "Asymmetry",
+                "Peak Burn",
+                "Joint Discomfort",
+                "Cardio Gassed"
+              ).forEach { tag ->
+                val isTagActive = selectedBiofeedbackTags.contains(tag)
+                Surface(
+                  onClick = {
+                    selectedBiofeedbackTags = if (isTagActive) {
+                      selectedBiofeedbackTags - tag
+                    } else {
+                      selectedBiofeedbackTags + tag
+                    }
+                  },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (isTagActive) Color(0xFFD48B54).copy(alpha = 0.2f) else CardElevated,
+                  border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (isTagActive) Color(0xFFD48B54) else BorderSubtle
+                  ),
+                  modifier = Modifier.testTag("biofeedback_chip_$tag")
+                ) {
+                  Text(
+                    text = tag,
+                    fontSize = 11.sp,
+                    fontWeight = if (isTagActive) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isTagActive) Color(0xFFE5A97C) else TextSecondary,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                  )
+                }
+              }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // MID-SET ADJUSTMENT & TEMPO (Expandable)
+            Surface(
+              onClick = { isDropSetExpanded = !isDropSetExpanded },
+              shape = RoundedCornerShape(10.dp),
+              color = CardElevated,
+              border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Icon(
+                    Icons.Default.FitnessCenter,
+                    contentDescription = null,
+                    tint = if (isDropSetExpanded) TitaniumWhite else TextSecondary,
+                    modifier = Modifier.size(15.dp)
+                  )
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text(
+                    text = if (isDropSetExpanded) "MID-SET ADJUSTMENT & TEMPO" else "+ Mid-Set Drop Set & Tempo",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDropSetExpanded) TitaniumWhite else TextSecondary
+                  )
+                }
+                Icon(
+                  if (isDropSetExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                  contentDescription = null,
+                  tint = TextSecondary,
+                  modifier = Modifier.size(18.dp)
+                )
+              }
+            }
+
+            AnimatedVisibility(visible = isDropSetExpanded) {
+              Column(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(top = 10.dp)
+                  .background(CardDark, RoundedCornerShape(10.dp))
+                  .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
+                  .padding(12.dp)
+              ) {
+                Text(
+                  text = "MID-SET DROP WEIGHT & REPS",
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = TextSecondary,
+                  letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  val dropDisplay = if (useLbs) (dropWeightKg * 2.20462).toInt() else dropWeightKg.toInt()
+                  Text(
+                    text = "Drop Wt: $dropDisplay ${if (useLbs) "lbs" else "kg"}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TitaniumWhite
+                  )
+                  Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(5.0, 10.0, 15.0, 20.0).forEach { wt ->
+                      val label = if (useLbs) "${(wt * 2.20462).toInt()}lb" else "${wt.toInt()}kg"
+                      Surface(
+                        onClick = { dropWeightKg = wt },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (dropWeightKg == wt) TitaniumWhite else CardElevated,
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle)
+                      ) {
+                        Text(
+                          text = label,
+                          fontSize = 10.sp,
+                          fontWeight = FontWeight.Bold,
+                          color = if (dropWeightKg == wt) MatteBlack else TextSecondary,
+                          modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                        )
+                      }
+                    }
+                  }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                  text = "TEMPO / MIND-MUSCLE CUE",
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = TextSecondary,
+                  letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                FlowRow(
+                  horizontalArrangement = Arrangement.spacedBy(6.dp),
+                  verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                  listOf(
+                    "Controlled Negative (3s)",
+                    "Paused Reps",
+                    "Explosive Concentric",
+                    "Peak Squeeze (2s)"
+                  ).forEach { t ->
+                    val isSelected = selectedTempo == t
+                    Surface(
+                      onClick = { selectedTempo = if (isSelected) "" else t },
+                      shape = RoundedCornerShape(6.dp),
+                      color = if (isSelected) TitaniumWhite else CardElevated,
+                      border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle)
+                    ) {
+                      Text(
+                        text = t,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isSelected) MatteBlack else TextSecondary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                      )
+                    }
+                  }
+                }
+              }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             // Log Set Button
+            val effectiveReps = selectedReps.toDouble() + (if (hasFractionalRep) 0.5 else 0.0)
+            val repsLabel = if (hasFractionalRep) "$effectiveReps" else "$selectedReps"
+            val displayWeight = if (useLbs) (selectedWeightKg * 2.20462).toInt() else selectedWeightKg.toInt()
+
             Button(
               onClick = {
                 viewModel.addSetToActiveSession(
                   exerciseName = selectedExerciseName,
                   weightKg = selectedWeightKg,
-                  reps = selectedReps
+                  reps = effectiveReps,
+                  setKind = if (isDropSetExpanded && dropWeightKg > 0.0) "DROP" else if (hasFractionalRep) "FAILURE" else "NORMAL",
+                  side = if (isUnilateralMode) selectedSide else "BOTH",
+                  biofeedbackTags = selectedBiofeedbackTags.toList(),
+                  tempo = selectedTempo,
+                  failurePoint = if (hasFractionalRep && selectedFailurePoint.isBlank()) "Failed at $repsLabel reps" else selectedFailurePoint,
+                  dropWeightKg = if (isDropSetExpanded) dropWeightKg else 0.0,
+                  dropReps = if (isDropSetExpanded) dropReps else 0.0,
+                  isUnilateral = isUnilateralMode
                 )
                 if (dashboardPrefs.showRestTimer) {
                   viewModel.startRestTimer()
@@ -1064,7 +1637,7 @@ fun WorkoutScreen(
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                  text = "LOG SET (${if (useLbs) (selectedWeightKg * 2.20462).toInt() else selectedWeightKg.toInt()} ${if (useLbs) "lbs" else "kg"} × $selectedReps reps)",
+                  text = "LOG SET ($displayWeight ${if (useLbs) "lbs" else "kg"} × $repsLabel reps${if (isUnilateralMode && selectedSide != "BOTH") " • $selectedSide" else ""})",
                   fontWeight = FontWeight.Bold,
                   fontSize = 13.sp,
                   letterSpacing = 0.5.sp
@@ -1075,107 +1648,15 @@ fun WorkoutScreen(
         }
       } else {
         // ---------------------------------------------------------
-        // METHOD 2: THE RAMBLER (AI VOICE/TEXT STREAM)
+        // METHOD 2: THE RAMBLER (ISOLATED INPUT FOR ZERO GLITCHING)
         // ---------------------------------------------------------
-        Card(
-          shape = RoundedCornerShape(18.dp),
-          colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-          border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
-          modifier = Modifier.fillMaxWidth().testTag("rambler_card")
-        ) {
-          Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Column {
-                Text(
-                  text = "THE RAMBLER (PAST & BULK LOGGING)",
-                  fontSize = 13.sp,
-                  fontWeight = FontWeight.Black,
-                  letterSpacing = 1.sp,
-                  color = TitaniumWhite
-                )
-                Text(
-                  text = "Type or paste 1 or multiple workouts separated by dates",
-                  fontSize = 11.sp,
-                  color = TextSecondary
-                )
-              }
-
-              Box(
-                modifier = Modifier
-                  .clip(RoundedCornerShape(6.dp))
-                  .background(if (isOnline) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFFD48B54).copy(alpha = 0.15f))
-                  .padding(horizontal = 6.dp, vertical = 2.dp)
-              ) {
-                Text(
-                  text = if (isOnline) "ONLINE AI" else "OFFLINE PARSER",
-                  fontSize = 9.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = if (isOnline) Color(0xFF10B981) else Color(0xFFD48B54)
-                )
-              }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            OutlinedTextField(
-              value = ramblerInput,
-              onValueChange = { ramblerInput = it },
-              placeholder = {
-                Text(
-                  text = "Enter as many workouts as you want, e.g.:\n\nAug 20: Bench press 80kg 3x8, Incline dumbbell 28kg 3x10\nAug 23: Pullups 4x10, Barbell Row 70kg 3x8\nYesterday: Squat 100kg 3x5, Leg Press 200kg 3x10",
-                  color = TextSecondary,
-                  fontSize = 12.sp,
-                  lineHeight = 17.sp
-                )
-              },
-              modifier = Modifier
-                .fillMaxWidth()
-                .height(145.dp)
-                .testTag("rambler_text_input"),
-              shape = RoundedCornerShape(12.dp),
-              colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = CardDark,
-                unfocusedContainerColor = CardDark,
-                focusedBorderColor = TitaniumWhite,
-                unfocusedBorderColor = BorderSubtle,
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary
-              )
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Button(
-              onClick = {
-                if (ramblerInput.isNotBlank()) {
-                  viewModel.parseGymRant(ramblerInput)
-                }
-              },
-              enabled = ramblerInput.isNotBlank() && !isParsingRant,
-              colors = ButtonDefaults.buttonColors(
-                containerColor = TitaniumWhite,
-                contentColor = MatteBlack
-              ),
-              shape = RoundedCornerShape(12.dp),
-              modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .testTag("submit_rambler_button")
-            ) {
-              if (isParsingRant) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MatteBlack, strokeWidth = 2.dp)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("AI is extracting workouts...", fontWeight = FontWeight.Bold)
-              } else {
-                Text("PARSE & SYNC WORKOUTS", fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 0.5.sp)
-              }
-            }
+        RamblerInputCard(
+          isOnline = isOnline,
+          isParsingRant = isParsingRant,
+          onParseRant = { text ->
+            viewModel.parseGymRant(text)
           }
-        }
+        )
       }
     }
 
@@ -1231,46 +1712,144 @@ fun WorkoutScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
               activeExercises.forEachIndexed { exIndex, ex ->
                 Surface(
-                  onClick = { inspectingActiveExerciseIndex = exIndex },
-                  shape = RoundedCornerShape(10.dp),
+                  shape = RoundedCornerShape(12.dp),
                   color = CardDark,
                   border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
                   modifier = Modifier.fillMaxWidth()
                 ) {
-                  Row(
-                    modifier = Modifier
-                      .fillMaxWidth()
-                      .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                  ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                      Text(
-                        text = ex.exerciseName,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                      )
-                      val setsText = ex.sets.map {
-                        val wt = if (useLbs) (it.weightKg * 2.20462).toInt() else it.weightKg.toInt()
-                        "${wt}${if (useLbs) "lb" else "kg"}×${it.reps}"
-                      }.joinToString("  •  ")
-                      Text(
-                        text = setsText,
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                      )
+                  Column(modifier = Modifier.padding(12.dp)) {
+                    // Exercise Header
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.SpaceBetween,
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                          text = ex.exerciseName,
+                          fontSize = 15.sp,
+                          fontWeight = FontWeight.Bold,
+                          color = TextPrimary
+                        )
+                        if (ex.isUnilateral) {
+                          Spacer(modifier = Modifier.width(6.dp))
+                          Box(
+                            modifier = Modifier
+                              .clip(RoundedCornerShape(4.dp))
+                              .background(TitaniumWhite.copy(alpha = 0.15f))
+                              .padding(horizontal = 6.dp, vertical = 2.dp)
+                          ) {
+                            Text(
+                              text = "UNILATERAL",
+                              fontSize = 8.sp,
+                              fontWeight = FontWeight.Bold,
+                              color = TitaniumWhite
+                            )
+                          }
+                        }
+                      }
+
+                      IconButton(
+                        onClick = { viewModel.removeExerciseFromActiveSession(exIndex) },
+                        modifier = Modifier.size(26.dp)
+                      ) {
+                        Icon(
+                          Icons.Default.Delete,
+                          contentDescription = "Delete Exercise",
+                          tint = Color(0xFFEF4444).copy(alpha = 0.8f),
+                          modifier = Modifier.size(16.dp)
+                        )
+                      }
                     }
 
-                    Icon(
-                      Icons.Default.Delete,
-                      contentDescription = "Manage Exercise",
-                      tint = TextSecondary,
-                      modifier = Modifier.size(18.dp)
-                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Individual sets with granular details and quick delete
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                      ex.sets.forEachIndexed { sIndex, s ->
+                        val wt = if (useLbs) (s.weightKg * 2.20462).toInt() else s.weightKg.toInt()
+                        val repsFormatted = if (s.reps % 1.0 == 0.0) s.reps.toInt().toString() else s.reps.toString()
+                        Surface(
+                          shape = RoundedCornerShape(8.dp),
+                          color = CardElevated,
+                          border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle),
+                          modifier = Modifier.fillMaxWidth()
+                        ) {
+                          Row(
+                            modifier = Modifier
+                              .fillMaxWidth()
+                              .padding(horizontal = 10.dp, vertical = 7.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                          ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                              Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                  text = "S${s.setNumber}:  $wt ${if (useLbs) "lbs" else "kg"} × $repsFormatted reps",
+                                  fontSize = 13.sp,
+                                  fontWeight = FontWeight.Bold,
+                                  color = TitaniumWhite
+                                )
+
+                                if (s.side == "LEFT") {
+                                  Spacer(modifier = Modifier.width(6.dp))
+                                  Text(
+                                    text = "[L]",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF38BDF8)
+                                  )
+                                } else if (s.side == "RIGHT") {
+                                  Spacer(modifier = Modifier.width(6.dp))
+                                  Text(
+                                    text = "[R]",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFB7185)
+                                  )
+                                }
+                              }
+
+                              // Granular Failure / Biofeedback / Drop / Tempo cues
+                              val details = mutableListOf<String>()
+                              if (s.failurePoint.isNotBlank()) details.add("⚠️ ${s.failurePoint}")
+                              if (s.biofeedbackTags.isNotEmpty()) details.add("⚡ ${s.biofeedbackTags.joinToString(", ")}")
+                              if (s.dropWeightKg > 0.0) {
+                                val dWt = if (useLbs) (s.dropWeightKg * 2.20462).toInt() else s.dropWeightKg.toInt()
+                                val dReps = if (s.dropReps % 1.0 == 0.0) s.dropReps.toInt().toString() else s.dropReps.toString()
+                                details.add("↳ Drop: $dWt ${if (useLbs) "lbs" else "kg"} × $dReps")
+                              }
+                              if (s.tempo.isNotBlank()) details.add("⏱ ${s.tempo}")
+
+                              if (details.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                  text = details.joinToString(" • "),
+                                  fontSize = 10.sp,
+                                  color = Color(0xFFCBD5E1),
+                                  lineHeight = 14.sp
+                                )
+                              }
+                            }
+
+                            IconButton(
+                              onClick = { viewModel.removeSetFromActiveSession(exIndex, sIndex) },
+                              modifier = Modifier.size(24.dp)
+                            ) {
+                              Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Delete Set",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(14.dp)
+                              )
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1629,10 +2208,12 @@ private fun ActiveExerciseDetailDialog(
 private fun CompletedExerciseDetailDialog(
   exerciseWithSets: com.example.model.ExerciseWithSets,
   useLbs: Boolean,
+  onDeleteSet: (Long) -> Unit,
   onDeleteExercise: () -> Unit,
   onDismiss: () -> Unit
 ) {
   var showConfirmDelete by remember { mutableStateOf(false) }
+  var setPendingDeleteId by remember { mutableStateOf<Long?>(null) }
 
   if (showConfirmDelete) {
     AlertDialog(
@@ -1653,6 +2234,31 @@ private fun CompletedExerciseDetailDialog(
       },
       dismissButton = {
         TextButton(onClick = { showConfirmDelete = false }) {
+          Text("Cancel", color = TitaniumSilver)
+        }
+      }
+    )
+  }
+
+  setPendingDeleteId?.let { setId ->
+    AlertDialog(
+      onDismissRequest = { setPendingDeleteId = null },
+      title = { Text("Delete Logged Set?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+      text = { Text("Are you sure you want to delete this set from the completed workout?", color = TextSecondary) },
+      containerColor = SurfaceDark,
+      confirmButton = {
+        Button(
+          onClick = {
+            onDeleteSet(setId)
+            setPendingDeleteId = null
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444), contentColor = Color.White)
+        ) {
+          Text("Delete Set")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { setPendingDeleteId = null }) {
           Text("Cancel", color = TitaniumSilver)
         }
       }
@@ -1703,6 +2309,7 @@ private fun CompletedExerciseDetailDialog(
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
           exerciseWithSets.sets.forEachIndexed { idx, s ->
             val wt = if (useLbs) (s.weightKg * 2.20462).toInt() else s.weightKg.toInt()
+            val repsFormatted = if (s.reps % 1.0 == 0.0) s.reps.toInt().toString() else s.reps.toString()
             Surface(
               shape = RoundedCornerShape(8.dp),
               color = CardDark,
@@ -1710,14 +2317,29 @@ private fun CompletedExerciseDetailDialog(
               modifier = Modifier.fillMaxWidth()
             ) {
               Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
               ) {
                 Text(
-                  text = "Set ${idx + 1}:  $wt ${if (useLbs) "lbs" else "kg"} × ${s.reps} reps",
+                  text = "Set ${idx + 1}:  $wt ${if (useLbs) "lbs" else "kg"} × $repsFormatted reps",
                   fontSize = 13.sp,
                   color = TextPrimary
                 )
+
+                IconButton(
+                  onClick = { setPendingDeleteId = s.id },
+                  modifier = Modifier.size(24.dp)
+                ) {
+                  Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete Set",
+                    tint = Color(0xFFEF4444).copy(alpha = 0.7f),
+                    modifier = Modifier.size(15.dp)
+                  )
+                }
               }
             }
           }
@@ -1734,7 +2356,7 @@ private fun CompletedExerciseDetailDialog(
         ) {
           Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
           Spacer(modifier = Modifier.width(6.dp))
-          Text("Delete From Saved Workout")
+          Text("Delete Entire Exercise")
         }
       }
     }
@@ -1798,7 +2420,7 @@ private fun MultiWorkoutRamblerDialog(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Clarifications section if AI detected missing weight or reps
+        // Clarifications section if missing weight or reps
         if (clarifications.isNotEmpty()) {
           Surface(
             shape = RoundedCornerShape(10.dp),
@@ -1810,11 +2432,13 @@ private fun MultiWorkoutRamblerDialog(
               Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Warning, contentDescription = null, tint = PlatinumSteel, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("AI Clarifications Needed", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TitaniumWhite)
+                Text("Clarifications Needed", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TitaniumWhite)
               }
               Spacer(modifier = Modifier.height(6.dp))
               clarifications.forEach { cl ->
-                var inputVal by remember { mutableStateOf(if (cl.initialWeightKg > 0) cl.initialWeightKg.toString() else "20.0") }
+                var inputVal by remember(cl.exerciseIndex, cl.question) {
+                  mutableStateOf(if (cl.initialWeightKg > 0) cl.initialWeightKg.toString() else "20.0")
+                }
                 Text(cl.question, fontSize = 11.sp, color = TextSecondary)
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1856,112 +2480,31 @@ private fun MultiWorkoutRamblerDialog(
             .heightIn(max = 380.dp),
           verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-          itemsIndexed(workoutList) { index, rant ->
-            var currentTitle by remember(rant) { mutableStateOf(rant.workoutTitle) }
-
-            Surface(
-              shape = RoundedCornerShape(12.dp),
-              color = CardDark,
-              border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
-              modifier = Modifier.fillMaxWidth()
-            ) {
-              Column(modifier = Modifier.padding(12.dp)) {
-                Row(
-                  modifier = Modifier.fillMaxWidth(),
-                  horizontalArrangement = Arrangement.SpaceBetween,
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  // Date Pill
-                  Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = SurfaceDark,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight)
-                  ) {
-                    Row(
-                      modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                      verticalAlignment = Alignment.CenterVertically
-                    ) {
-                      Icon(Icons.Default.DateRange, contentDescription = null, tint = PlatinumSteel, modifier = Modifier.size(13.dp))
-                      Spacer(modifier = Modifier.width(5.dp))
-                      Text(
-                        text = rant.dateDisplay ?: "Past Workout",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TitaniumWhite
-                      )
-                    }
-                  }
-
-                  if (workoutList.size > 1) {
-                    IconButton(
-                      onClick = { onRemoveRant(index) },
-                      modifier = Modifier.size(24.dp)
-                    ) {
-                      Icon(Icons.Default.Delete, contentDescription = "Remove workout", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
-                    }
-                  }
+          itemsIndexed(
+            items = workoutList,
+            key = { index, r -> "rant_${index}_${r.workoutDateMillis}_${r.workoutTitle}" }
+          ) { index, rant ->
+            WorkoutRantReviewItem(
+              rant = rant,
+              index = index,
+              totalCount = workoutList.size,
+              useLbs = useLbs,
+              onTitleChange = { newTitle ->
+                val currentList = workoutList.toMutableList()
+                if (index in currentList.indices) {
+                  currentList[index] = currentList[index].copy(workoutTitle = newTitle)
+                  workoutList = currentList
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                  value = currentTitle,
-                  onValueChange = {
-                    currentTitle = it
-                    val updated = rant.copy(workoutTitle = it)
-                    onUpdateRant(index, updated)
-                  },
-                  label = { Text("Workout Name", fontSize = 10.sp, color = TextSecondary) },
-                  singleLine = true,
-                  colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = SurfaceDark,
-                    unfocusedContainerColor = SurfaceDark,
-                    focusedBorderColor = TitaniumWhite,
-                    unfocusedBorderColor = BorderSubtle,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
-                  ),
-                  shape = RoundedCornerShape(8.dp),
-                  modifier = Modifier.fillMaxWidth().height(52.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                  text = "${rant.exercises.size} Exercises Detected:",
-                  fontSize = 11.sp,
-                  fontWeight = FontWeight.SemiBold,
-                  color = TextSecondary
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                  rant.exercises.forEach { ex ->
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.SpaceBetween,
-                      verticalAlignment = Alignment.CenterVertically
-                    ) {
-                      Text(
-                        text = ex.exerciseName,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TitaniumWhite
-                      )
-                      val setsSummary = ex.sets.mapIndexed { sIdx, s ->
-                        val wt = if (useLbs) (s.weightKg * 2.20462).toInt() else s.weightKg.toInt()
-                        "${wt}${if (useLbs) "lb" else "kg"}×${s.reps}"
-                      }.joinToString(", ")
-                      Text(
-                        text = setsSummary,
-                        fontSize = 11.sp,
-                        color = TextSecondary
-                      )
-                    }
-                  }
+              },
+              onRemove = {
+                val currentList = workoutList.toMutableList()
+                if (index in currentList.indices) {
+                  currentList.removeAt(index)
+                  workoutList = currentList
+                  onRemoveRant(index)
                 }
               }
-            }
+            )
           }
         }
 
@@ -2028,3 +2571,231 @@ private fun RamblerReviewDialog(
     onDismiss = onDismiss
   )
 }
+
+@Composable
+private fun WorkoutRantReviewItem(
+  rant: ParsedWorkoutRant,
+  index: Int,
+  totalCount: Int,
+  useLbs: Boolean,
+  onTitleChange: (String) -> Unit,
+  onRemove: () -> Unit
+) {
+  var titleText by rememberSaveable(rant.workoutDateMillis) { mutableStateOf(rant.workoutTitle) }
+
+  Surface(
+    shape = RoundedCornerShape(12.dp),
+    color = CardDark,
+    border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+    modifier = Modifier.fillMaxWidth()
+  ) {
+    Column(modifier = Modifier.padding(12.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        // Date Pill
+        Surface(
+          shape = RoundedCornerShape(6.dp),
+          color = SurfaceDark,
+          border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight)
+        ) {
+          Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Icon(Icons.Default.DateRange, contentDescription = null, tint = PlatinumSteel, modifier = Modifier.size(13.dp))
+            Spacer(modifier = Modifier.width(5.dp))
+            Text(
+              text = rant.dateDisplay ?: "Past Workout",
+              fontSize = 11.sp,
+              fontWeight = FontWeight.Bold,
+              color = TitaniumWhite
+            )
+          }
+        }
+
+        if (totalCount > 1) {
+          IconButton(
+            onClick = onRemove,
+            modifier = Modifier.size(24.dp)
+          ) {
+            Icon(Icons.Default.Delete, contentDescription = "Remove workout", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(8.dp))
+
+      OutlinedTextField(
+        value = titleText,
+        onValueChange = {
+          titleText = it
+          onTitleChange(it)
+        },
+        label = { Text("Workout Name", fontSize = 10.sp, color = TextSecondary) },
+        singleLine = true,
+        colors = OutlinedTextFieldDefaults.colors(
+          focusedContainerColor = SurfaceDark,
+          unfocusedContainerColor = SurfaceDark,
+          focusedBorderColor = TitaniumWhite,
+          unfocusedBorderColor = BorderSubtle,
+          focusedTextColor = TextPrimary,
+          unfocusedTextColor = TextPrimary
+        ),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth().height(52.dp)
+      )
+
+      Spacer(modifier = Modifier.height(8.dp))
+
+      Text(
+        text = "${rant.exercises.size} Exercises Detected:",
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = TextSecondary
+      )
+      Spacer(modifier = Modifier.height(4.dp))
+
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        rant.exercises.forEach { ex ->
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = ex.exerciseName,
+              fontSize = 12.sp,
+              fontWeight = FontWeight.Bold,
+              color = TitaniumWhite
+            )
+            val setsSummary = ex.sets.mapIndexed { _, s ->
+              val wt = if (useLbs) (s.weightKg * 2.20462).toInt() else s.weightKg.toInt()
+              val repsFormatted = if (s.reps % 1.0 == 0.0) s.reps.toInt().toString() else s.reps.toString()
+              val sideIndicator = if (s.side == "LEFT") " [L]" else if (s.side == "RIGHT") " [R]" else ""
+              "${wt}${if (useLbs) "lb" else "kg"}×$repsFormatted$sideIndicator"
+            }.joinToString(", ")
+            Text(
+              text = setsSummary,
+              fontSize = 11.sp,
+              color = TextSecondary
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun RamblerInputCard(
+  isOnline: Boolean,
+  isParsingRant: Boolean,
+  onParseRant: (String) -> Unit
+) {
+  var ramblerText by rememberSaveable { mutableStateOf("") }
+
+  Card(
+    shape = RoundedCornerShape(18.dp),
+    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+    border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+    modifier = Modifier.fillMaxWidth().testTag("rambler_card")
+  ) {
+    Column(modifier = Modifier.padding(16.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column {
+          Text(
+            text = "THE RAMBLER",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 1.sp,
+            color = TitaniumWhite
+          )
+          Text(
+            text = "Quick natural language & voice workout logging",
+            fontSize = 11.sp,
+            color = TextSecondary
+          )
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Box(
+            modifier = Modifier
+              .size(6.dp)
+              .background(if (isOnline) Color(0xFF05DF72) else Color(0xFFD48B54), CircleShape)
+          )
+          Spacer(modifier = Modifier.width(5.dp))
+          Text(
+            text = if (isOnline) "Cloud" else "Local",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextSecondary
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(12.dp))
+
+      OutlinedTextField(
+        value = ramblerText,
+        onValueChange = { ramblerText = it },
+        placeholder = {
+          Text(
+            text = "Enter exercises and sets, e.g.:\n\nBench Press 80kg 3x8\nIncline DB Press 30kg 10, 10, 8\nPreacher Curl 35kg 6.5 reps (failed at 90 deg)",
+            color = TextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 17.sp
+          )
+        },
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(135.dp)
+          .testTag("rambler_text_input"),
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+          focusedContainerColor = CardDark,
+          unfocusedContainerColor = CardDark,
+          focusedBorderColor = TitaniumWhite,
+          unfocusedBorderColor = BorderSubtle,
+          focusedTextColor = TextPrimary,
+          unfocusedTextColor = TextPrimary
+        )
+      )
+
+      Spacer(modifier = Modifier.height(12.dp))
+
+      Button(
+        onClick = {
+          if (ramblerText.isNotBlank()) {
+            onParseRant(ramblerText)
+          }
+        },
+        enabled = ramblerText.isNotBlank() && !isParsingRant,
+        colors = ButtonDefaults.buttonColors(
+          containerColor = TitaniumWhite,
+          contentColor = MatteBlack
+        ),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(48.dp)
+          .testTag("submit_rambler_button")
+      ) {
+        if (isParsingRant) {
+          CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MatteBlack, strokeWidth = 2.dp)
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Analyzing workout notes...", fontWeight = FontWeight.Bold)
+        } else {
+          Text("PARSE & SYNC WORKOUT", fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+        }
+      }
+    }
+  }
+}
+
