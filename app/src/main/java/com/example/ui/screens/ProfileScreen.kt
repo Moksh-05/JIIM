@@ -1442,16 +1442,55 @@ fun ProfileScreen(
                 Text("DOWNLOAD & INSTALL UPDATE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
               }
 
-              androidx.compose.material3.OutlinedButton(
-                onClick = { viewModel.openDownloadInBrowser(info.apkDownloadUrl) },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = TitaniumWhite),
-                border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth().height(42.dp)
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
               ) {
-                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Download via Browser / GitHub", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                androidx.compose.material3.OutlinedButton(
+                  onClick = { viewModel.downloadViaSystemManager(info) },
+                  colors = ButtonDefaults.outlinedButtonColors(contentColor = TitaniumWhite),
+                  border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+                  shape = RoundedCornerShape(10.dp),
+                  modifier = Modifier.weight(1f).height(42.dp)
+                ) {
+                  Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(15.dp))
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text("System DL", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                androidx.compose.material3.OutlinedButton(
+                  onClick = { viewModel.openDownloadInBrowser(info.apkDownloadUrl) },
+                  colors = ButtonDefaults.outlinedButtonColors(contentColor = TitaniumWhite),
+                  border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+                  shape = RoundedCornerShape(10.dp),
+                  modifier = Modifier.weight(1.2f).height(42.dp)
+                ) {
+                  Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(15.dp))
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text("Browser / Chrome", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+              }
+            }
+
+            is UpdateCheckState.DownloadManagerStarted -> {
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = SurfaceDark,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981)),
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Downloading via Android System", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TitaniumWhite)
+                  }
+                  Text(
+                    text = "Swipe down your notification shade to monitor progress. Once finished, tap the notification or open your Downloads folder to install.",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                  )
+                }
               }
             }
 

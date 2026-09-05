@@ -1,10 +1,12 @@
 package com.example.data
 
 import android.app.Activity
+import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
@@ -34,6 +36,7 @@ sealed class UpdateCheckState {
   data class UpToDate(val currentVersion: String) : UpdateCheckState()
   data class Available(val updateInfo: ReleaseUpdateInfo) : UpdateCheckState()
   data class Downloading(val progressPercent: Int, val downloadedBytes: Long, val totalBytes: Long) : UpdateCheckState()
+  data class DownloadManagerStarted(val downloadId: Long, val fileName: String) : UpdateCheckState()
   data class ReadyToInstall(val apkFile: File) : UpdateCheckState()
   data class Error(val message: String) : UpdateCheckState()
 }
@@ -187,6 +190,23 @@ class AppUpdateManager(private val context: Context) {
     }
   }
 
+  fun downloadViaDownloadManager(downloadUrl: String, fileName: String = "JIIM_update.apk"): Long {
+    return try {
+      val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager ?: return -1L
+      val request = DownloadManager.Request(Uri.parse(downloadUrl)).apply {
+        setTitle("JIIM Update")
+        setDescription("Downloading latest release APK from GitHub")
+        setMimeType("application/vnd.android.package-archive")
+        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+      }
+      dm.enqueue(request)
+    } catch (e: Exception) {
+      Log.e("AppUpdateManager", "Error enqueuing download in DownloadManager", e)
+      -1L
+    }
+  }
+
   suspend fun downloadApk(
     downloadUrl: String,
     onProgress: (Int, Long, Long) -> Unit
@@ -206,7 +226,11 @@ class AppUpdateManager(private val context: Context) {
       val body = response.body ?: return@withContext null
       val totalBytes = body.contentLength()
 
-      val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
+      val updatesDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        ?: File(context.filesDir, "updates")
+      if (!updatesDir.exists()) {
+        updatesDir.mkdirs()
+      }
       val targetFile = File(updatesDir, "JIIM_update.apk")
       if (targetFile.exists()) {
         targetFile.delete()
@@ -214,15 +238,19 @@ class AppUpdateManager(private val context: Context) {
 
       body.byteStream().use { input ->
         FileOutputStream(targetFile).use { output ->
-          val buffer = ByteArray(8192)
+          val buffer = ByteArray(16384)
           var read: Int
           var totalRead = 0L
+          var lastPercent = -1
 
           while (input.read(buffer).also { read = it } != -1) {
             output.write(buffer, 0, read)
             totalRead += read
             val percent = if (totalBytes > 0) ((totalRead * 100) / totalBytes).toInt() else -1
-            onProgress(percent, totalRead, totalBytes)
+            if (percent != lastPercent) {
+              lastPercent = percent
+              onProgress(percent, totalRead, totalBytes)
+            }
           }
           output.flush()
         }
@@ -256,17 +284,34 @@ class AppUpdateManager(private val context: Context) {
       val intent = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(apkUri, "application/vnd.android.package-archive")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
         putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
       }
 
+      // Explicitly grant permissions to all packages that can handle VIEW of APK
       val resolveInfoList = context.packageManager.queryIntentActivities(
         intent,
         android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
       )
       for (resolveInfo in resolveInfoList) {
         val packageName = resolveInfo.activityInfo.packageName
-        context.grantUriPermission(packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try {
+          context.grantUriPermission(packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (_: Exception) {}
+      }
+
+      // Also grant explicitly to common system package installers to prevent InstallStaging ENOENT
+      listOf(
+        "com.google.android.packageinstaller",
+        "com.android.packageinstaller",
+        "com.samsung.android.packageinstaller",
+        "com.miui.packageinstaller"
+      ).forEach { pkg ->
+        try {
+          context.grantUriPermission(pkg, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (_: Exception) {}
       }
 
       context.startActivity(intent)

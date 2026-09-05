@@ -145,6 +145,15 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
+  fun downloadViaSystemManager(info: ReleaseUpdateInfo) {
+    val id = appUpdateManager.downloadViaDownloadManager(info.apkDownloadUrl, "JIIM_v${info.tagName}.apk")
+    if (id > 0L) {
+      _updateCheckState.value = UpdateCheckState.DownloadManagerStarted(id, "JIIM_v${info.tagName}.apk")
+    } else {
+      _updateCheckState.value = UpdateCheckState.Error("Failed to start system download. Please use browser download.")
+    }
+  }
+
   fun installDownloadedApk(file: File) {
     appUpdateManager.installApk(file)
   }
