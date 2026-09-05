@@ -1,67 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-
-    <!-- JIIM Minimalist High-Contrast Precision Dumbbell Emblem -->
-    <!-- Safe-zone centered: (54, 54), radius < 33dp -->
-
-    <!-- Main Center Bar / Knurled Grip -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M38,50.5 H70 A2,2 0 0,1 72,52.5 V55.5 A2,2 0 0,1 70,57.5 H38 A2,2 0 0,1 36,55.5 V52.5 A2,2 0 0,1 38,50.5 Z" />
-
-    <!-- Center Grip Knurl Accents -->
-    <path
-        android:fillColor="#94A3B8"
-        android:pathData="M48,51.5 H49.5 V56.5 H48 Z" />
-    <path
-        android:fillColor="#94A3B8"
-        android:pathData="M53.25,51.5 H54.75 V56.5 H53.25 Z" />
-    <path
-        android:fillColor="#94A3B8"
-        android:pathData="M58.5,51.5 H60 V56.5 H58.5 Z" />
-
-    <!-- Left Inner Collar -->
-    <path
-        android:fillColor="#CBD5E1"
-        android:pathData="M37.2,47.5 H38.5 V60.5 H37.2 A1.2,1.2 0 0,1 36,59.3 V48.7 A1.2,1.2 0 0,1 37.2,47.5 Z" />
-
-    <!-- Right Inner Collar -->
-    <path
-        android:fillColor="#CBD5E1"
-        android:pathData="M69.5,47.5 H70.8 A1.2,1.2 0 0,1 72,48.7 V59.3 A1.2,1.2 0 0,1 70.8,60.5 H69.5 Z" />
-
-    <!-- Left Heavy Inner Plate (White, High-Contrast) -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M32.5,38 H33 A2,2 0 0,1 35,40 V68 A2,2 0 0,1 33,70 H32.5 A2,2 0 0,1 30.5,68 V40 A2,2 0 0,1 32.5,38 Z" />
-
-    <!-- Left Heavy Outer Plate (Titanium Steel) -->
-    <path
-        android:fillColor="#94A3B8"
-        android:pathData="M27,42 H27 A2,2 0 0,1 29,44 V64 A2,2 0 0,1 27,66 H27 A2,2 0 0,1 25,64 V44 A2,2 0 0,1 27,42 Z" />
-
-    <!-- Left End Nut / Collar -->
-    <path
-        android:fillColor="#E2E8F0"
-        android:pathData="M24.5,51.5 H25 V56.5 H24.5 A1,1 0 0,1 23.5,55.5 V52.5 A1,1 0 0,1 24.5,51.5 Z" />
-
-    <!-- Right Heavy Inner Plate (White, High-Contrast) -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M75,38 H75.5 A2,2 0 0,1 77.5,40 V68 A2,2 0 0,1 75.5,70 H75 A2,2 0 0,1 73,68 V40 A2,2 0 0,1 75,38 Z" />
-
-    <!-- Right Heavy Outer Plate (Titanium Steel) -->
-    <path
-        android:fillColor="#94A3B8"
-        android:pathData="M81,42 H81 A2,2 0 0,1 83,44 V64 A2,2 0 0,1 81,66 H81 A2,2 0 0,1 79,64 V44 A2,2 0 0,1 81,42 Z" />
-
-    <!-- Right End Nut / Collar -->
-    <path
-        android:fillColor="#E2E8F0"
-        android:pathData="M83,51.5 H83.5 A1,1 0 0,1 84.5,52.5 V55.5 A1,1 0 0,1 83.5,56.5 H83 Z" />
-
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="108dp"
+        android:height="108dp"
+        android:drawable="@drawable/ic_jim_logo"
+        android:gravity="center" />
+</layer-list>

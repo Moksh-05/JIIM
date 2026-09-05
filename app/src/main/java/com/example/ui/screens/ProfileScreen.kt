@@ -42,6 +42,8 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -1620,6 +1622,149 @@ fun ProfileScreen(
                   Text("Retry", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
               }
+            }
+          }
+        }
+      }
+
+      // -------------------------------------------------------------
+      // AI & GEMINI CONFIGURATION
+      // -------------------------------------------------------------
+      Text(
+        text = "AI & GEMINI ENGINE",
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        color = TitaniumSilver,
+        letterSpacing = 1.2.sp
+      )
+
+      var geminiKeyInput by remember { mutableStateOf(viewModel.getGeminiApiKey()) }
+      var keySavedSuccess by remember { mutableStateOf(false) }
+
+      Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = CardDark,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+        modifier = Modifier.fillMaxWidth().testTag("gemini_config_card")
+      ) {
+        Column(
+          modifier = Modifier.padding(16.dp),
+          verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Box(
+                modifier = Modifier
+                  .size(36.dp)
+                  .clip(CircleShape)
+                  .background(SurfaceDark),
+                contentAlignment = Alignment.Center
+              ) {
+                Icon(
+                  Icons.Default.AutoAwesome,
+                  contentDescription = null,
+                  tint = TitaniumWhite,
+                  modifier = Modifier.size(20.dp)
+                )
+              }
+              Spacer(modifier = Modifier.width(12.dp))
+              Column {
+                Text(
+                  text = "Gemini 3.5 Flash",
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 14.sp,
+                  color = TitaniumWhite
+                )
+                Text(
+                  text = if (viewModel.isGeminiConfigured) "AI Connected & Active" else "No API Key (Local Parser Active)",
+                  fontSize = 11.sp,
+                  color = if (viewModel.isGeminiConfigured) Color(0xFF10B981) else Color(0xFFE5A83B)
+                )
+              }
+            }
+
+            Surface(
+              shape = RoundedCornerShape(20.dp),
+              color = if (viewModel.isGeminiConfigured) Color(0xFF0F2E1E) else Color(0xFF2A2415)
+            ) {
+              Text(
+                text = if (viewModel.isGeminiConfigured) "Active" else "Offline",
+                color = if (viewModel.isGeminiConfigured) Color(0xFF10B981) else Color(0xFFE5A83B),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+              )
+            }
+          }
+
+          Text(
+            text = "Powers high-accuracy workout extraction in The Rambler and AI coaching in Trainer Jim. Get your free API key at aistudio.google.com.",
+            fontSize = 11.sp,
+            color = TextSecondary,
+            lineHeight = 16.sp
+          )
+
+          OutlinedTextField(
+            value = geminiKeyInput,
+            onValueChange = {
+              geminiKeyInput = it
+              keySavedSuccess = false
+            },
+            placeholder = { Text("Paste your Gemini API key (AIzaSy...)", color = TextSecondary, fontSize = 12.sp) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().testTag("gemini_api_key_input"),
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedContainerColor = SurfaceDark,
+              unfocusedContainerColor = SurfaceDark,
+              focusedBorderColor = TitaniumWhite,
+              unfocusedBorderColor = BorderSubtle,
+              focusedTextColor = TextPrimary,
+              unfocusedTextColor = TextPrimary
+            )
+          )
+
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            if (geminiKeyInput.isNotBlank()) {
+              androidx.compose.material3.OutlinedButton(
+                onClick = {
+                  geminiKeyInput = ""
+                  viewModel.setGeminiApiKey("")
+                  keySavedSuccess = false
+                },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF5350)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f).height(42.dp)
+              ) {
+                Text("Clear", fontSize = 11.sp)
+              }
+            }
+
+            Button(
+              onClick = {
+                viewModel.setGeminiApiKey(geminiKeyInput)
+                keySavedSuccess = true
+              },
+              colors = ButtonDefaults.buttonColors(
+                containerColor = TitaniumWhite,
+                contentColor = MatteBlack
+              ),
+              shape = RoundedCornerShape(10.dp),
+              modifier = Modifier.weight(1.5f).height(42.dp).testTag("save_gemini_key_btn")
+            ) {
+              Text(
+                if (keySavedSuccess) "Key Saved!" else "Save Key",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+              )
             }
           }
         }

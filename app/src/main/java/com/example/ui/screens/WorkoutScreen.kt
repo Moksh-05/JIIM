@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +24,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -354,9 +365,19 @@ fun WorkoutScreen(
   }
 
   if (showRamblerDialog) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = { showRamblerDialog = false }) {
+    Dialog(
+      onDismissRequest = { showRamblerDialog = false },
+      properties = DialogProperties(
+        usePlatformDefaultWidth = false,
+        dismissOnBackPress = false,
+        dismissOnClickOutside = false
+      )
+    ) {
       RamblerInputCard(
         isOnline = isOnline,
+        isGeminiConfigured = viewModel.isGeminiConfigured,
+        initialApiKey = viewModel.getGeminiApiKey(),
+        onSaveGeminiKey = { key -> viewModel.setGeminiApiKey(key) },
         isParsingRant = isParsingRant,
         onParseRant = { text ->
           showRamblerDialog = false
@@ -1680,13 +1701,21 @@ private fun MultiWorkoutRamblerDialog(
 ) {
   var workoutList by remember(rants) { mutableStateOf(rants) }
 
-  Dialog(onDismissRequest = onDismiss) {
+  Dialog(
+    onDismissRequest = onDismiss,
+    properties = DialogProperties(
+      usePlatformDefaultWidth = false,
+      dismissOnBackPress = false,
+      dismissOnClickOutside = false
+    )
+  ) {
     Card(
       shape = RoundedCornerShape(20.dp),
       colors = CardDefaults.cardColors(containerColor = SurfaceDark),
       border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
       modifier = Modifier
-        .fillMaxWidth()
+        .fillMaxWidth(0.96f)
+        .fillMaxHeight(0.88f)
         .testTag("rambler_review_dialog")
     ) {
       Column(
@@ -2046,79 +2075,286 @@ private fun WorkoutRantReviewItem(
 @Composable
 private fun RamblerInputCard(
   isOnline: Boolean,
+  isGeminiConfigured: Boolean,
+  initialApiKey: String,
+  onSaveGeminiKey: (String) -> Unit,
   isParsingRant: Boolean,
   onParseRant: (String) -> Unit,
   onDismiss: (() -> Unit)? = null
 ) {
   var ramblerText by rememberSaveable { mutableStateOf("") }
+  var showKeyDialog by remember { mutableStateOf(false) }
+  var apiKeyDraft by remember { mutableStateOf(initialApiKey) }
+  val clipboardManager = LocalClipboardManager.current
 
   Card(
-    shape = RoundedCornerShape(18.dp),
+    shape = RoundedCornerShape(22.dp),
     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
     border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
-    modifier = Modifier.fillMaxWidth().testTag("rambler_card")
+    modifier = Modifier
+      .fillMaxWidth(0.96f)
+      .fillMaxHeight(0.88f)
+      .testTag("rambler_card")
   ) {
-    Column(modifier = Modifier.padding(16.dp)) {
+    Column(
+      modifier = Modifier
+        .fillMaxSize()
+        .padding(18.dp)
+    ) {
+      // Header
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Column {
-          Text(
-            text = "THE RAMBLER",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = 1.sp,
-            color = TitaniumWhite
-          )
-          Text(
-            text = "Quick natural language & voice workout logging",
-            fontSize = 11.sp,
-            color = TextSecondary
-          )
-        }
-
         Row(verticalAlignment = Alignment.CenterVertically) {
           Box(
             modifier = Modifier
-              .size(6.dp)
-              .background(if (isOnline) Color(0xFF05DF72) else Color(0xFFD48B54), CircleShape)
-          )
-          Spacer(modifier = Modifier.width(5.dp))
-          Text(
-            text = if (isOnline) "Cloud" else "Local",
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = TextSecondary
-          )
+              .size(36.dp)
+              .clip(CircleShape)
+              .background(CardDark),
+            contentAlignment = Alignment.Center
+          ) {
+            Icon(
+              Icons.Default.FitnessCenter,
+              contentDescription = null,
+              tint = TitaniumWhite,
+              modifier = Modifier.size(18.dp)
+            )
+          }
+          Spacer(modifier = Modifier.width(10.dp))
+          Column {
+            Text(
+              text = "THE RAMBLER",
+              fontSize = 15.sp,
+              fontWeight = FontWeight.Black,
+              letterSpacing = 1.sp,
+              color = TitaniumWhite
+            )
+            Text(
+              text = "Lifter's Notepad • Gemini 3.5 Flash",
+              fontSize = 11.sp,
+              color = TextSecondary
+            )
+          }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          // Gemini status badge / trigger
+          Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = if (isGeminiConfigured) Color(0xFF0F2E1E) else Color(0xFF2A2415),
+            border = androidx.compose.foundation.BorderStroke(
+              1.dp,
+              if (isGeminiConfigured) Color(0xFF05DF72).copy(alpha = 0.6f) else Color(0xFFE5A83B).copy(alpha = 0.6f)
+            ),
+            modifier = Modifier.clickable { showKeyDialog = !showKeyDialog }
+          ) {
+            Row(
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Icon(
+                if (isGeminiConfigured) Icons.Default.AutoAwesome else Icons.Default.Key,
+                contentDescription = null,
+                tint = if (isGeminiConfigured) Color(0xFF05DF72) else Color(0xFFE5A83B),
+                modifier = Modifier.size(12.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = if (isGeminiConfigured) "Gemini Active" else "Setup Key",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isGeminiConfigured) Color(0xFF05DF72) else Color(0xFFE5A83B)
+              )
+            }
+          }
+
           if (onDismiss != null) {
             Spacer(modifier = Modifier.width(8.dp))
-            IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
-              Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary, modifier = Modifier.size(16.dp))
+            IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+              Icon(
+                Icons.Default.Close,
+                contentDescription = "Close",
+                tint = TextSecondary,
+                modifier = Modifier.size(20.dp)
+              )
             }
           }
         }
       }
 
-      Spacer(modifier = Modifier.height(12.dp))
+      // Inline Gemini Key setup banner (if opened)
+      AnimatedVisibility(visible = showKeyDialog) {
+        Surface(
+          shape = RoundedCornerShape(12.dp),
+          color = CardDark,
+          border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+        ) {
+          Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+              text = "Gemini API Key (Google AI Studio)",
+              fontSize = 12.sp,
+              fontWeight = FontWeight.Bold,
+              color = TitaniumWhite
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+              text = "Free key from aistudio.google.com for high-accuracy workout analysis and workout title categorization.",
+              fontSize = 10.sp,
+              color = TextSecondary,
+              lineHeight = 14.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+              value = apiKeyDraft,
+              onValueChange = { apiKeyDraft = it },
+              placeholder = { Text("AIzaSy...", color = TextSecondary, fontSize = 11.sp) },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth(),
+              shape = RoundedCornerShape(8.dp),
+              colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = SurfaceDark,
+                unfocusedContainerColor = SurfaceDark,
+                focusedBorderColor = TitaniumWhite,
+                unfocusedBorderColor = BorderSubtle,
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary
+              )
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.End
+            ) {
+              TextButton(onClick = { showKeyDialog = false }) {
+                Text("Close", color = TextSecondary, fontSize = 11.sp)
+              }
+              Spacer(modifier = Modifier.width(8.dp))
+              Button(
+                onClick = {
+                  onSaveGeminiKey(apiKeyDraft)
+                  showKeyDialog = false
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = TitaniumWhite, contentColor = MatteBlack),
+                shape = RoundedCornerShape(8.dp)
+              ) {
+                Text("Save Key", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+              }
+            }
+          }
+        }
+      }
 
+      Spacer(modifier = Modifier.height(10.dp))
+
+      // Quick action helper chips
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = CardDark,
+          border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+          modifier = Modifier.clickable {
+            val clip = clipboardManager.getText()?.text
+            if (!clip.isNullOrBlank()) {
+              ramblerText = if (ramblerText.isBlank()) clip else "$ramblerText\n$clip"
+            }
+          }
+        ) {
+          Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Icon(Icons.Default.ContentPaste, contentDescription = null, tint = TitaniumWhite, modifier = Modifier.size(12.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Paste Clipboard", fontSize = 11.sp, color = TitaniumWhite)
+          }
+        }
+
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = CardDark,
+          border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+          modifier = Modifier.clickable {
+            val example = "Push Day\nBarbell Bench Press 80kg 3x8\nIncline DB Press 30kg 10, 8, 8\nCable Chest Flyes 15kg 12, 12\nTricep Rope Pushdowns 25kg 3x12"
+            ramblerText = if (ramblerText.isBlank()) example else "$ramblerText\n\n$example"
+          }
+        ) {
+          Text("+ Push Day", fontSize = 11.sp, color = TextSecondary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+        }
+
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = CardDark,
+          border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+          modifier = Modifier.clickable {
+            val example = "Pull Day\nLat Pulldowns 65kg 3x10\nSeated Cable Row 60kg 10, 10, 8\nIncline DB Curl 14kg 3x10\nFace Pulls 20kg 15, 15"
+            ramblerText = if (ramblerText.isBlank()) example else "$ramblerText\n\n$example"
+          }
+        ) {
+          Text("+ Pull Day", fontSize = 11.sp, color = TextSecondary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+        }
+
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = CardDark,
+          border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+          modifier = Modifier.clickable {
+            val example = "Leg Day\nBarbell Back Squats 100kg 3x6\nLeg Press 180kg 10, 10, 10\nRomanian Deadlift 80kg 3x8\nStanding Calf Raises 50kg 15, 15"
+            ramblerText = if (ramblerText.isBlank()) example else "$ramblerText\n\n$example"
+          }
+        ) {
+          Text("+ Leg Day", fontSize = 11.sp, color = TextSecondary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+        }
+
+        if (ramblerText.isNotBlank()) {
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = CardDark,
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+            modifier = Modifier.clickable { ramblerText = "" }
+          ) {
+            Text("Clear", fontSize = 11.sp, color = Color(0xFFEF5350), modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      // Spacious Lifter's Notepad Text Box (dynamic weight fills the dialog!)
       OutlinedTextField(
         value = ramblerText,
         onValueChange = { ramblerText = it },
         placeholder = {
           Text(
-            text = "Enter exercises and sets, e.g.:\n\nBench Press 80kg 3x8\nIncline DB Press 30kg 10, 10, 8\nPreacher Curl 35kg 6.5 reps (failed at 90 deg)",
-            color = TextSecondary,
-            fontSize = 12.sp,
-            lineHeight = 17.sp
+            text = "Type or paste your workout notes freely, e.g.:\n\nPush Day\nBarbell Bench Press 80kg 3x8\nIncline DB Press 32kg 10, 8, 8\nCable Chest Flyes 15kg 12, 12\nTricep Rope Pushdown 25kg 3x12 (insane pump)\nLateral Raises 12kg 15, 12\n\nTip: You can paste your entire session! Gemini will intelligently analyze all exercises, sets, weights, reps, and workout names.",
+            color = TextSecondary.copy(alpha = 0.8f),
+            fontSize = 13.sp,
+            lineHeight = 19.sp
           )
         },
         modifier = Modifier
           .fillMaxWidth()
-          .height(135.dp)
+          .weight(1f)
           .testTag("rambler_text_input"),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
+        singleLine = false,
+        minLines = 8,
+        keyboardOptions = KeyboardOptions(
+          capitalization = KeyboardCapitalization.Sentences,
+          autoCorrectEnabled = true,
+          keyboardType = KeyboardType.Text,
+          imeAction = ImeAction.Default
+        ),
         colors = OutlinedTextFieldDefaults.colors(
           focusedContainerColor = CardDark,
           unfocusedContainerColor = CardDark,
@@ -2129,8 +2365,30 @@ private fun RamblerInputCard(
         )
       )
 
-      Spacer(modifier = Modifier.height(12.dp))
+      Spacer(modifier = Modifier.height(8.dp))
 
+      // Character / Line counter
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        val lineCount = ramblerText.lines().count { it.isNotBlank() }
+        Text(
+          text = if (ramblerText.isBlank()) "Ready for notes" else "$lineCount line${if (lineCount == 1) "" else "s"} • ${ramblerText.length} chars",
+          fontSize = 11.sp,
+          color = TextSecondary
+        )
+        Text(
+          text = if (isGeminiConfigured) "✨ AI Analysis Enabled" else "⚡ Local Rule Engine",
+          fontSize = 11.sp,
+          color = if (isGeminiConfigured) Color(0xFF05DF72) else TextSecondary
+        )
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      // Bottom Action Button
       Button(
         onClick = {
           if (ramblerText.isNotBlank()) {
@@ -2140,20 +2398,24 @@ private fun RamblerInputCard(
         enabled = ramblerText.isNotBlank() && !isParsingRant,
         colors = ButtonDefaults.buttonColors(
           containerColor = TitaniumWhite,
-          contentColor = MatteBlack
+          contentColor = MatteBlack,
+          disabledContainerColor = CardElevated,
+          disabledContentColor = TextSecondary
         ),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier
           .fillMaxWidth()
-          .height(48.dp)
+          .height(52.dp)
           .testTag("submit_rambler_button")
       ) {
         if (isParsingRant) {
-          CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MatteBlack, strokeWidth = 2.dp)
-          Spacer(modifier = Modifier.width(8.dp))
-          Text("Analyzing workout notes...", fontWeight = FontWeight.Bold)
+          CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MatteBlack, strokeWidth = 2.dp)
+          Spacer(modifier = Modifier.width(10.dp))
+          Text("Gemini is analyzing your notes...", fontWeight = FontWeight.Bold, fontSize = 13.sp)
         } else {
-          Text("PARSE & SYNC WORKOUT", fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+          Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("ANALYZE WITH GEMINI", fontWeight = FontWeight.Black, fontSize = 13.sp, letterSpacing = 0.5.sp)
         }
       }
     }

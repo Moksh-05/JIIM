@@ -289,4 +289,12 @@ class UserProfileManager(context: Context) {
     }
     prefs.edit().putString("custom_exercises_json", arr.toString()).apply()
   }
+
+  fun getGeminiApiKey(): String {
+    return prefs.getString("custom_gemini_api_key", "") ?: ""
+  }
+
+  fun setGeminiApiKey(key: String) {
+    prefs.edit().putString("custom_gemini_api_key", key.trim()).apply()
+  }
 }

@@ -103,10 +103,16 @@ data class TrainerMessage(
 class GymViewModel(application: Application) : AndroidViewModel(application) {
 
   private val repository: GymRepository
-  private val geminiService = GeminiService()
-  private val networkMonitor = NetworkMonitor(application)
   private val userProfileManager = com.example.data.UserProfileManager(application)
+  private val geminiService = GeminiService { userProfileManager.getGeminiApiKey() }
+  private val networkMonitor = NetworkMonitor(application)
   private val appUpdateManager = AppUpdateManager(application)
+
+  fun getGeminiApiKey(): String = userProfileManager.getGeminiApiKey()
+  fun setGeminiApiKey(key: String) {
+    userProfileManager.setGeminiApiKey(key)
+  }
+  val isGeminiConfigured: Boolean get() = geminiService.isKeyConfigured
 
   val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), networkMonitor.checkCurrentOnline())

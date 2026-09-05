@@ -152,20 +152,36 @@ object OfflineRantParser {
     // Detect title from first line or exercises
     var detectedTitle = ""
     val firstLine = lines.firstOrNull() ?: ""
-    val lowerFirst = firstLine.lowercase(Locale.ROOT)
+    val cleanFirst = firstLine.trim().removePrefix("#").removePrefix("*").removePrefix("-").trim()
     val lowerFull = clean.lowercase(Locale.ROOT)
 
-    when {
-      lowerFull.contains("push day") || lowerFirst.contains("push") -> detectedTitle = "Push Day"
-      lowerFull.contains("pull day") || lowerFirst.contains("pull") -> detectedTitle = "Pull Day"
-      lowerFull.contains("leg day") || lowerFirst.contains("leg") -> detectedTitle = "Leg Day"
-      lowerFull.contains("chest") && lowerFull.contains("tricep") -> detectedTitle = "Chest & Triceps"
-      lowerFull.contains("bicep") && lowerFull.contains("shoulder") -> detectedTitle = "Biceps & Shoulders"
-      lowerFull.contains("arm day") || lowerFirst.contains("arm") -> detectedTitle = "Arms Workout"
-      lowerFull.contains("back day") || lowerFirst.contains("back") -> detectedTitle = "Back Workout"
-      lowerFull.contains("upper") -> detectedTitle = "Upper Body"
-      lowerFull.contains("lower") -> detectedTitle = "Lower Body"
-      lowerFull.contains("shoulder") -> detectedTitle = "Shoulders Workout"
+    // 1. If first line is a title without sets/numbers, use the lifter's title directly!
+    val hasSetNumbersInFirstLine = Regex("""\b\d+(?:kg|lb|lbs)?\b|\b\d+\s*[x×]\s*\d+\b""").containsMatchIn(cleanFirst)
+    if (!hasSetNumbersInFirstLine && cleanFirst.length in 3..60 && !cleanFirst.contains("yesterday", ignoreCase = true) && !cleanFirst.contains("today", ignoreCase = true)) {
+      val candidateTitle = cleanFirst
+        .removePrefix("Workout:")
+        .removePrefix("Session:")
+        .removePrefix("Day:")
+        .trim()
+      if (candidateTitle.isNotBlank()) {
+        detectedTitle = candidateTitle
+      }
+    }
+
+    if (detectedTitle.isBlank()) {
+      when {
+        Regex("""\bpush\s+day\b""").containsMatchIn(lowerFull) -> detectedTitle = "Push Day"
+        Regex("""\bpull\s+day\b""").containsMatchIn(lowerFull) -> detectedTitle = "Pull Day"
+        Regex("""\bleg\s+day\b""").containsMatchIn(lowerFull) -> detectedTitle = "Leg Day"
+        Regex("""\bupper\s+body\b""").containsMatchIn(lowerFull) -> detectedTitle = "Upper Body"
+        Regex("""\blower\s+body\b""").containsMatchIn(lowerFull) -> detectedTitle = "Lower Body"
+        lowerFull.contains("chest") && lowerFull.contains("tricep") -> detectedTitle = "Chest & Triceps"
+        lowerFull.contains("back") && lowerFull.contains("bicep") -> detectedTitle = "Back & Biceps"
+        lowerFull.contains("bicep") && lowerFull.contains("tricep") -> detectedTitle = "Arm Day"
+        Regex("""\barm\s+day\b""").containsMatchIn(lowerFull) -> detectedTitle = "Arms Workout"
+        Regex("""\bback\s+day\b""").containsMatchIn(lowerFull) -> detectedTitle = "Back Workout"
+        Regex("""\bshoulder\s+day\b""").containsMatchIn(lowerFull) -> detectedTitle = "Shoulders Workout"
+      }
     }
 
     val isLbs = clean.contains("lb", ignoreCase = true) || clean.contains("pound", ignoreCase = true) || hasTypicalPoundNumbers(clean)

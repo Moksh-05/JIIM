@@ -24,7 +24,9 @@ enum class GeminiChatModel(val modelId: String, val displayName: String, val bad
   FLASH_LITE("gemini-3.1-flash-lite-preview", "Gemini 3.1 Flash-Lite", "Fast Cues")
 }
 
-class GeminiService {
+class GeminiService(
+  private val customApiKeyProvider: (() -> String)? = null
+) {
 
   private val client = OkHttpClient.Builder()
     .connectTimeout(60, TimeUnit.SECONDS)
@@ -32,34 +34,43 @@ class GeminiService {
     .writeTimeout(60, TimeUnit.SECONDS)
     .build()
 
-  private val apiKey: String
-    get() = try {
-      BuildConfig.GEMINI_API_KEY
-    } catch (_: Throwable) {
-      ""
+  val effectiveApiKey: String
+    get() {
+      val custom = customApiKeyProvider?.invoke()?.trim()
+      if (!custom.isNullOrBlank() && custom != "MY_GEMINI_API_KEY") {
+        return custom
+      }
+      return try {
+        val bKey = BuildConfig.GEMINI_API_KEY.trim()
+        if (bKey.isNotBlank() && bKey != "MY_GEMINI_API_KEY") bKey else ""
+      } catch (_: Throwable) {
+        ""
+      }
     }
 
-  private val isKeyConfigured: Boolean
-    get() = apiKey.isNotBlank() && apiKey != "MY_GEMINI_API_KEY"
+  val isKeyConfigured: Boolean
+    get() = effectiveApiKey.isNotBlank() && effectiveApiKey != "MY_GEMINI_API_KEY"
 
   suspend fun parseGymRant(
     rantText: String,
-    isOnline: Boolean
+    isOnline: Boolean = true
   ): ParsedWorkoutRant = withContext(Dispatchers.IO) {
     parseGymRants(rantText, isOnline).firstOrNull() ?: OfflineRantParser.parseRant(rantText)
   }
 
   suspend fun parseGymRants(
     rantText: String,
-    isOnline: Boolean
+    isOnline: Boolean = true
   ): List<ParsedWorkoutRant> = withContext(Dispatchers.IO) {
-    if (!isOnline || !isKeyConfigured) {
+    if (!isKeyConfigured) {
+      Log.i("GeminiService", "Gemini API key is not configured; using offline parser.")
       return@withContext OfflineRantParser.parseMultiWorkoutRant(rantText)
     }
 
     try {
+      Log.i("GeminiService", "Analyzing workout notes using Gemini 3.5 Flash...")
       val prompt = """
-        You are an expert fitness data parser and biomechanics extraction engine.
+        You are an expert bodybuilding and strength training parser and biomechanics extraction engine.
         You map unstructured, rant-style lifter notes into a structured workout schema.
         
         CRITICAL PARSING RULES:
@@ -84,28 +95,44 @@ class GeminiService {
              * Legs and Core -> "Lower Body"
              * Biceps, Triceps, Delts -> "Arms & Shoulders"
              * Full body spectrum -> "Full Body"
-           - If the user explicitly provided a title (e.g. "Push Day 1", "Heavy Leg Day"), prioritize their title.
+           - If the user explicitly provided a title or headline (e.g. "Push Day 1", "Heavy Leg Day", "Chest & Back"), PRIORITIZE THEIR EXACT TITLE!
            - NEVER return generic "Logged Workout" or leave the title empty!
-        4. Pounds (LBS) vs Kilograms (KG) Unit Detection:
+        4. Accurate Canonical Exercise Names:
+           - Correct typos and gym slang to clean canonical exercise names:
+             "bench" / "flat bench" -> "Barbell Bench Press"
+             "inc db" / "incline dumbbell" -> "Incline Dumbbell Press"
+             "lat pulldown" / "pulldowns" -> "Lat Pulldown"
+             "seated row" / "cable row" -> "Seated Cable Row"
+             "db curl" / "curls" / "bicep curl" -> "Barbell Bicep Curl" or "Dumbbell Curl"
+             "rope pushdown" / "pushdown" -> "Tricep Rope Pushdown"
+             "lateral raise" / "lat raise" / "side raises" -> "Dumbbell Lateral Raise"
+             "squats" -> "Barbell Back Squat"
+             "leg press" -> "Leg Press"
+             "rdl" -> "Romanian Deadlift"
+             "hamstring curl" / "leg curl" -> "Hamstring Leg Curl"
+             "calf raises" -> "Standing Calf Raise"
+             "ohp" / "military press" -> "Overhead Barbell Press"
+           - DO NOT mix up muscle groups! Bicep curls are biceps, pushdowns are triceps, lateral raises are delts, lat pulldowns are back.
+        5. Pounds (LBS) vs Kilograms (KG) Unit Detection:
            - Analyze whether the lifter's weights are in pounds (LBS) or kilograms (KG).
            - If the lifter mentions "lb", "lbs", "pounds", or uses typical American dumbbell sizes (e.g. 35s, 40s, 50s, 60s, 70s, 80s) or barbell plate numbers (e.g. 95, 135, 155, 185, 205, 225, 245, 275, 315) without explicitly specifying "kg":
              Treat the unit as "LBS"!
            - If weights are in LBS, convert them to kilograms for storage: `weightKg = weightLbs / 2.20462`, rounded to 1 decimal place (e.g., 60 lbs -> 27.2 kg, 185 lbs -> 83.9 kg, 225 lbs -> 102.1 kg, 50 lbs -> 22.7 kg).
            - Output "detectedUnit": "LBS" (or "KG" if explicitly in kg).
-        5. Fractional & Partial Reps: Recognize decimal points in reps (e.g., "6.5 reps failure", "failed at 6.5") as exact decimal numbers in "reps" (e.g. 6.5). Never round up to an integer!
-        6. Muscular Failure Points: If the lifter mentions where they failed (e.g. "preacher curl machine stuck at 90 degrees", "failed at 6.5 reps"), record this in "failurePoint".
-        7. Biofeedback Translation: Map subjective notes into standardized tags in "biofeedbackTags" array:
+        6. Fractional & Partial Reps: Recognize decimal points in reps (e.g., "6.5 reps failure", "failed at 6.5") as exact decimal numbers in "reps" (e.g. 6.5). Never round up to an integer!
+        7. Muscular Failure Points: If the lifter mentions where they failed (e.g. "preacher curl machine stuck at 90 degrees", "failed at 6.5 reps"), record this in "failurePoint".
+        8. Biofeedback Translation: Map subjective notes into standardized tags in "biofeedbackTags" array:
            - "fingers hurt", "grip gave out", "straps slipped" -> "grip_fatigue"
            - "felt awkward", "form breakdown", "lost arch" -> "form_breakdown"
            - "left arm weaker", "discrepancy" -> "asymmetry"
            - "armpit discomfort", "shoulder pinch", "knee twinge" -> "joint_discomfort"
            - "insane burn", "mind-muscle peak", "crazy pump" -> "peak_burn"
            - "gassed out", "out of breath", "cardio fatigue" -> "cardio_fatigue"
-        8. Asymmetric Unilateral Discrepancies: If left and right sides performed different reps or weights, split them into dual exercise entries or separate sets marked with side "LEFT" and "RIGHT".
-        9. Mid-Set Adjustments & Drop Sets: If the lifter drops weight mid-set, capture "dropWeightKg", "dropReps", and setKind="DROP".
-        10. Bodyweight Exercises: For pull-ups, push-ups, dips, planks, and hanging leg raises, set weightKg=0.0.
-        11. Date Recognition: Identify if notes span multiple sessions/dates (e.g. "Aug 20", "Yesterday", "3 days ago"). Create a distinct workout object for each session!
-        12. Keep "clarificationQuestions" empty `[]`. Do NOT nag the user with unanswerable questions about past dates or reps.
+        9. Asymmetric Unilateral Discrepancies: If left and right sides performed different reps or weights, split them into dual exercise entries or separate sets marked with side "LEFT" and "RIGHT".
+        10. Mid-Set Adjustments & Drop Sets: If the lifter drops weight mid-set, capture "dropWeightKg", "dropReps", and setKind="DROP".
+        11. Bodyweight Exercises: For pull-ups, push-ups, dips, planks, and hanging leg raises, set weightKg=0.0.
+        12. Date Recognition: Identify if notes span multiple sessions/dates (e.g. "Aug 20", "Yesterday", "3 days ago"). Create a distinct workout object for each session!
+        13. Keep "clarificationQuestions" empty `[]`. Do NOT nag the user with unanswerable questions about past dates or reps.
         
         Text to parse:
         "$rantText"
@@ -146,11 +173,12 @@ class GeminiService {
       if (jsonResponse != null) {
         val parsedList = parseRantsJson(jsonResponse, rantText)
         if (parsedList.isNotEmpty()) {
+          Log.i("GeminiService", "Successfully parsed ${parsedList.size} workout session(s) via Gemini 3.5 Flash")
           return@withContext parsedList
         }
       }
     } catch (e: Exception) {
-      Log.e("GeminiService", "Online multi-rant parsing failed, falling back to offline parser", e)
+      Log.e("GeminiService", "Gemini online multi-rant parsing failed, falling back to offline parser", e)
     }
 
     // Fallback to offline multi-parser
@@ -217,7 +245,12 @@ class GeminiService {
   }
 
   private fun callGemini(prompt: String): String? {
-    val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
+    val key = effectiveApiKey
+    if (key.isBlank() || key == "MY_GEMINI_API_KEY") {
+      Log.w("GeminiService", "Gemini API key is not configured or is placeholder")
+      return null
+    }
+    val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$key"
 
     val requestBodyJson = JSONObject().apply {
       val contentsArray = JSONArray().apply {
@@ -230,6 +263,10 @@ class GeminiService {
         put(contentObj)
       }
       put("contents", contentsArray)
+      put("generationConfig", JSONObject().apply {
+        put("responseMimeType", "application/json")
+        put("temperature", 0.1)
+      })
     }
 
     val request = Request.Builder()
@@ -239,7 +276,8 @@ class GeminiService {
 
     client.newCall(request).execute().use { response ->
       if (!response.isSuccessful) {
-        Log.w("GeminiService", "Gemini HTTP call failed with code: ${response.code}")
+        val errBody = response.body?.string() ?: ""
+        Log.w("GeminiService", "Gemini HTTP call failed code=${response.code} message=${response.message} body=$errBody")
         return null
       }
       val responseText = response.body?.string() ?: return null
@@ -502,7 +540,7 @@ class GeminiService {
         }
       """.trimIndent()
 
-      val url = "https://generativelanguage.googleapis.com/v1beta/models/${model.modelId}:generateContent?key=$apiKey"
+      val url = "https://generativelanguage.googleapis.com/v1beta/models/${model.modelId}:generateContent?key=$effectiveApiKey"
 
       val requestBodyJson = JSONObject().apply {
         // System instruction
