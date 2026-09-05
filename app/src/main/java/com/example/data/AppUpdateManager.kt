@@ -47,9 +47,11 @@ class AppUpdateManager(private val context: Context) {
   }
 
   private val client = OkHttpClient.Builder()
-    .connectTimeout(15, TimeUnit.SECONDS)
-    .readTimeout(60, TimeUnit.SECONDS)
+    .connectTimeout(30, TimeUnit.SECONDS)
+    .readTimeout(180, TimeUnit.SECONDS)
+    .writeTimeout(180, TimeUnit.SECONDS)
     .followRedirects(true)
+    .followSslRedirects(true)
     .build()
 
   val currentVersionName: String
@@ -156,6 +158,35 @@ class AppUpdateManager(private val context: Context) {
     return cleanRemote != cleanCurrent
   }
 
+  fun canInstallPackages(): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      context.packageManager.canRequestPackageInstalls()
+    } else {
+      true
+    }
+  }
+
+  fun openInstallPermissionSettings() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+        data = Uri.parse("package:${context.packageName}")
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      context.startActivity(settingsIntent)
+    }
+  }
+
+  fun openDownloadInBrowser(downloadUrl: String) {
+    try {
+      val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      context.startActivity(intent)
+    } catch (e: Exception) {
+      Log.e("AppUpdateManager", "Error opening download in browser", e)
+    }
+  }
+
   suspend fun downloadApk(
     downloadUrl: String,
     onProgress: (Int, Long, Long) -> Unit
@@ -175,8 +206,8 @@ class AppUpdateManager(private val context: Context) {
       val body = response.body ?: return@withContext null
       val totalBytes = body.contentLength()
 
-      val outputDir = context.getExternalFilesDir(null) ?: context.cacheDir
-      val targetFile = File(outputDir, "JIIM_update.apk")
+      val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
+      val targetFile = File(updatesDir, "JIIM_update.apk")
       if (targetFile.exists()) {
         targetFile.delete()
       }
@@ -197,6 +228,7 @@ class AppUpdateManager(private val context: Context) {
         }
       }
 
+      targetFile.setReadable(true, false)
       targetFile
     } catch (e: Exception) {
       Log.e("AppUpdateManager", "Error downloading APK from GitHub", e)
@@ -208,14 +240,10 @@ class AppUpdateManager(private val context: Context) {
     return try {
       if (!apkFile.exists()) return false
 
-      // On Android 8.0+, check if unknown app install permission is needed
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         if (!context.packageManager.canRequestPackageInstalls()) {
-          val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-            data = Uri.parse("package:${context.packageName}")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-          }
-          context.startActivity(settingsIntent)
+          openInstallPermissionSettings()
+          return false
         }
       }
 
@@ -229,7 +257,18 @@ class AppUpdateManager(private val context: Context) {
         setDataAndType(apkUri, "application/vnd.android.package-archive")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
       }
+
+      val resolveInfoList = context.packageManager.queryIntentActivities(
+        intent,
+        android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+      )
+      for (resolveInfo in resolveInfoList) {
+        val packageName = resolveInfo.activityInfo.packageName
+        context.grantUriPermission(packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+
       context.startActivity(intent)
       true
     } catch (e: Exception) {

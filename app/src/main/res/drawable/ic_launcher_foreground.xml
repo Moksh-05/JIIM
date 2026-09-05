@@ -4,66 +4,64 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Hand gripping heavy dumbbell matching uploaded brand asset -->
 
-    <!-- Forearm extending from bottom -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,62 L69,63 L74,88 L56,88 Z" />
+    <!-- JIIM Minimalist High-Contrast Precision Dumbbell Emblem -->
+    <!-- Safe-zone centered: (54, 54), radius < 33dp -->
 
-    <!-- Fist and fingers wrapped around bar -->
+    <!-- Main Center Bar / Knurled Grip -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M44,48 C44,43 49,39 56,41 C60,42 63,45 64,49 C65,53 64,58 60,61 C55,64 48,63 45,59 C44,57 44,53 44,48 Z" />
+        android:pathData="M38,50.5 H70 A2,2 0 0,1 72,52.5 V55.5 A2,2 0 0,1 70,57.5 H38 A2,2 0 0,1 36,55.5 V52.5 A2,2 0 0,1 38,50.5 Z" />
 
-    <!-- Knuckle / grip shadow cutouts -->
+    <!-- Center Grip Knurl Accents -->
     <path
-        android:fillColor="#000000"
-        android:pathData="M46,48 A2,2 0 1,0 46,52 A2,2 0 1,0 46,48 Z" />
+        android:fillColor="#94A3B8"
+        android:pathData="M48,51.5 H49.5 V56.5 H48 Z" />
     <path
-        android:fillColor="#000000"
-        android:pathData="M51,46 A2,2 0 1,0 51,50 A2,2 0 1,0 51,46 Z" />
+        android:fillColor="#94A3B8"
+        android:pathData="M53.25,51.5 H54.75 V56.5 H53.25 Z" />
     <path
-        android:fillColor="#000000"
-        android:pathData="M56,44 A2,2 0 1,0 56,48 A2,2 0 1,0 56,44 Z" />
+        android:fillColor="#94A3B8"
+        android:pathData="M58.5,51.5 H60 V56.5 H58.5 Z" />
 
-    <!-- Dumbbell Central Bar -->
+    <!-- Left Inner Collar -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M38,33 L78,63 L74,68 L34,38 Z" />
+        android:fillColor="#CBD5E1"
+        android:pathData="M37.2,47.5 H38.5 V60.5 H37.2 A1.2,1.2 0 0,1 36,59.3 V48.7 A1.2,1.2 0 0,1 37.2,47.5 Z" />
 
-    <!-- Dumbbell Top-Right Weight Assembly -->
+    <!-- Right Inner Collar -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M66,22 C72,17 80,18 86,25 C92,32 91,41 84,47 C78,52 70,51 64,44 C58,37 59,28 66,22 Z" />
-    <!-- Top-Right Inner Cutout Ring -->
-    <path
-        android:fillColor="#000000"
-        android:pathData="M69,25 C73,21 79,22 83,27 C87,32 86,38 81,42 C77,46 71,45 67,40 C63,35 65,29 69,25 Z" />
-    <!-- Top-Right Inner Core -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M72,28 C74,26 77,27 79,30 C81,33 80,36 77,38 C75,40 72,39 70,36 C68,33 69,30 72,28 Z" />
-    <!-- Top-Right Outer Rim Accent -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M81,18 C88,23 93,31 93,39 C93,42 91,42 90,39 C89,32 85,25 79,21 C77,20 78,17 81,18 Z" />
+        android:fillColor="#CBD5E1"
+        android:pathData="M69.5,47.5 H70.8 A1.2,1.2 0 0,1 72,48.7 V59.3 A1.2,1.2 0 0,1 70.8,60.5 H69.5 Z" />
 
-    <!-- Dumbbell Bottom-Left Weight Assembly -->
+    <!-- Left Heavy Inner Plate (White, High-Contrast) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M23,43 C29,37 37,38 43,45 C49,52 48,61 41,67 C35,72 27,71 21,64 C15,57 16,48 23,43 Z" />
-    <!-- Bottom-Left Inner Cutout Ring -->
+        android:pathData="M32.5,38 H33 A2,2 0 0,1 35,40 V68 A2,2 0 0,1 33,70 H32.5 A2,2 0 0,1 30.5,68 V40 A2,2 0 0,1 32.5,38 Z" />
+
+    <!-- Left Heavy Outer Plate (Titanium Steel) -->
     <path
-        android:fillColor="#000000"
-        android:pathData="M26,46 C30,42 36,43 40,48 C44,53 43,59 38,63 C34,67 28,66 24,61 C20,56 22,50 26,46 Z" />
-    <!-- Bottom-Left Inner Core -->
+        android:fillColor="#94A3B8"
+        android:pathData="M27,42 H27 A2,2 0 0,1 29,44 V64 A2,2 0 0,1 27,66 H27 A2,2 0 0,1 25,64 V44 A2,2 0 0,1 27,42 Z" />
+
+    <!-- Left End Nut / Collar -->
+    <path
+        android:fillColor="#E2E8F0"
+        android:pathData="M24.5,51.5 H25 V56.5 H24.5 A1,1 0 0,1 23.5,55.5 V52.5 A1,1 0 0,1 24.5,51.5 Z" />
+
+    <!-- Right Heavy Inner Plate (White, High-Contrast) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M29,49 C31,47 34,48 36,51 C38,54 37,57 34,59 C32,61 29,60 27,57 C25,54 26,51 29,49 Z" />
-    <!-- Bottom-Left Outer Rim Accent -->
+        android:pathData="M75,38 H75.5 A2,2 0 0,1 77.5,40 V68 A2,2 0 0,1 75.5,70 H75 A2,2 0 0,1 73,68 V40 A2,2 0 0,1 75,38 Z" />
+
+    <!-- Right Heavy Outer Plate (Titanium Steel) -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M20,40 C16,46 15,53 17,61 C18,63 16,64 15,62 C13,54 14,46 18,39 C19,38 21,39 20,40 Z" />
+        android:fillColor="#94A3B8"
+        android:pathData="M81,42 H81 A2,2 0 0,1 83,44 V64 A2,2 0 0,1 81,66 H81 A2,2 0 0,1 79,64 V44 A2,2 0 0,1 81,42 Z" />
+
+    <!-- Right End Nut / Collar -->
+    <path
+        android:fillColor="#E2E8F0"
+        android:pathData="M83,51.5 H83.5 A1,1 0 0,1 84.5,52.5 V55.5 A1,1 0 0,1 83.5,56.5 H83 Z" />
+
 </vector>
-

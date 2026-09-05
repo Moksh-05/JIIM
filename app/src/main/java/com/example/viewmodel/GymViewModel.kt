@@ -149,6 +149,18 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
     appUpdateManager.installApk(file)
   }
 
+  fun openDownloadInBrowser(url: String) {
+    appUpdateManager.openDownloadInBrowser(url)
+  }
+
+  fun openInstallPermissionSettings() {
+    appUpdateManager.openInstallPermissionSettings()
+  }
+
+  fun canInstallPackages(): Boolean {
+    return appUpdateManager.canInstallPackages()
+  }
+
   fun resetUpdateState() {
     _updateCheckState.value = UpdateCheckState.Idle
   }

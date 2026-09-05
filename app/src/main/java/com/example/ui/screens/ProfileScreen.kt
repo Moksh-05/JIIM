@@ -35,8 +35,10 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MonitorWeight
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -1396,6 +1398,36 @@ fun ProfileScreen(
                 }
               }
 
+              if (!viewModel.canInstallPackages()) {
+                Surface(
+                  shape = RoundedCornerShape(10.dp),
+                  color = Color(0xFFF59E0B).copy(alpha = 0.12f),
+                  border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                  ) {
+                    Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                      Text("Install Permission Required", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF59E0B))
+                      Text("Allow JIIM to install updates from unknown sources.", fontSize = 10.sp, color = TextSecondary)
+                    }
+                    Button(
+                      onClick = { viewModel.openInstallPermissionSettings() },
+                      colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B), contentColor = Color.Black),
+                      shape = RoundedCornerShape(6.dp),
+                      contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                      modifier = Modifier.height(30.dp)
+                    ) {
+                      Text("Settings", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                  }
+                }
+              }
+
               Button(
                 onClick = { viewModel.downloadAndInstallUpdate(info) },
                 colors = ButtonDefaults.buttonColors(
@@ -1408,6 +1440,18 @@ fun ProfileScreen(
                 Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("DOWNLOAD & INSTALL UPDATE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+              }
+
+              androidx.compose.material3.OutlinedButton(
+                onClick = { viewModel.openDownloadInBrowser(info.apkDownloadUrl) },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TitaniumWhite),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth().height(42.dp)
+              ) {
+                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Download via Browser / GitHub", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
               }
             }
 
@@ -1437,18 +1481,34 @@ fun ProfileScreen(
             }
 
             is UpdateCheckState.ReadyToInstall -> {
-              Button(
-                onClick = { viewModel.installDownloadedApk(state.apkFile) },
-                colors = ButtonDefaults.buttonColors(
-                  containerColor = Color(0xFF10B981),
-                  contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth().height(46.dp).testTag("install_update_btn")
-              ) {
-                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("INSTALL UPDATE NOW", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+              Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                  onClick = { viewModel.installDownloadedApk(state.apkFile) },
+                  colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF10B981),
+                    contentColor = Color.White
+                  ),
+                  shape = RoundedCornerShape(10.dp),
+                  modifier = Modifier.fillMaxWidth().height(46.dp).testTag("install_update_btn")
+                ) {
+                  Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text("INSTALL UPDATE NOW", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+
+                androidx.compose.material3.OutlinedButton(
+                  onClick = {
+                    viewModel.openDownloadInBrowser("https://github.com/${com.example.data.AppUpdateManager.GITHUB_OWNER}/${com.example.data.AppUpdateManager.GITHUB_REPO}/releases/latest")
+                  },
+                  colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
+                  border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+                  shape = RoundedCornerShape(10.dp),
+                  modifier = Modifier.fillMaxWidth().height(40.dp)
+                ) {
+                  Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text("Open in Browser", fontSize = 11.sp)
+                }
               }
             }
 
@@ -1459,16 +1519,20 @@ fun ProfileScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f)),
                 modifier = Modifier.fillMaxWidth()
               ) {
-                Row(
-                  modifier = Modifier.padding(10.dp),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
-                  Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                      text = state.message,
+                      fontSize = 11.sp,
+                      color = Color(0xFFEF4444)
+                    )
+                  }
                   Text(
-                    text = state.message,
-                    fontSize = 11.sp,
-                    color = Color(0xFFEF4444)
+                    text = "If Android reports 'App not installed', uninstall any conflicting earlier build once, or download directly via browser.",
+                    fontSize = 10.sp,
+                    color = TextSecondary
                   )
                 }
               }
@@ -1487,6 +1551,22 @@ fun ProfileScreen(
                   modifier = Modifier.weight(1f).height(40.dp)
                 ) {
                   Text("Dismiss", fontSize = 11.sp)
+                }
+
+                Button(
+                  onClick = {
+                    viewModel.openDownloadInBrowser("https://github.com/${com.example.data.AppUpdateManager.GITHUB_OWNER}/${com.example.data.AppUpdateManager.GITHUB_REPO}/releases/latest")
+                  },
+                  colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF3B82F6),
+                    contentColor = Color.White
+                  ),
+                  shape = RoundedCornerShape(8.dp),
+                  modifier = Modifier.weight(1.3f).height(40.dp)
+                ) {
+                  Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(14.dp))
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text("Browser DL", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Button(
