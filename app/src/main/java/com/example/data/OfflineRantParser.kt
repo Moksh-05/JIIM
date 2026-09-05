@@ -150,23 +150,25 @@ object OfflineRantParser {
     val (dateMillis, dateDisplay, dateClarification) = extractDateFromBlock(clean, fallbackDayOffset)
 
     // Detect title from first line or exercises
-    var detectedTitle = "Logged Workout"
+    var detectedTitle = ""
     val firstLine = lines.firstOrNull() ?: ""
     val lowerFirst = firstLine.lowercase(Locale.ROOT)
     val lowerFull = clean.lowercase(Locale.ROOT)
 
     when {
-      lowerFull.contains("push") -> detectedTitle = "Push Day"
-      lowerFull.contains("pull") -> detectedTitle = "Pull Day"
-      lowerFull.contains("leg") -> detectedTitle = "Leg Day"
+      lowerFull.contains("push day") || lowerFirst.contains("push") -> detectedTitle = "Push Day"
+      lowerFull.contains("pull day") || lowerFirst.contains("pull") -> detectedTitle = "Pull Day"
+      lowerFull.contains("leg day") || lowerFirst.contains("leg") -> detectedTitle = "Leg Day"
       lowerFull.contains("chest") && lowerFull.contains("tricep") -> detectedTitle = "Chest & Triceps"
       lowerFull.contains("bicep") && lowerFull.contains("shoulder") -> detectedTitle = "Biceps & Shoulders"
-      lowerFull.contains("arm") -> detectedTitle = "Arms Workout"
-      lowerFull.contains("back") -> detectedTitle = "Back Workout"
+      lowerFull.contains("arm day") || lowerFirst.contains("arm") -> detectedTitle = "Arms Workout"
+      lowerFull.contains("back day") || lowerFirst.contains("back") -> detectedTitle = "Back Workout"
       lowerFull.contains("upper") -> detectedTitle = "Upper Body"
       lowerFull.contains("lower") -> detectedTitle = "Lower Body"
       lowerFull.contains("shoulder") -> detectedTitle = "Shoulders Workout"
     }
+
+    val isLbs = clean.contains("lb", ignoreCase = true) || clean.contains("pound", ignoreCase = true) || hasTypicalPoundNumbers(clean)
 
     // Split text into clauses / lines / sentences for exercise parsing
     val segments = clean.split(Regex("[\n;.]|(?<=[0-9])\\s*,\\s*(?=[a-zA-Z])|(?i)\\s+(then|next|after that|afterwards|finished with|also did)\\s+"))
@@ -181,7 +183,7 @@ object OfflineRantParser {
     }
 
     for (segment in segments) {
-      val (matchedName, sets) = parseSegment(segment)
+      val (matchedName, sets) = parseSegment(segment, isLbs)
       if (matchedName != null && sets.isNotEmpty()) {
         parsedExercises.add(
           ParsedExerciseLog(
@@ -198,7 +200,7 @@ object OfflineRantParser {
         val idx = lowerFull.indexOf(alias)
         if (idx != -1) {
           val sub = clean.substring(idx)
-          val (_, sets) = parseSegment(sub)
+          val (_, sets) = parseSegment(sub, isLbs)
           if (sets.isNotEmpty() && parsedExercises.none { it.exerciseName == canonical }) {
             parsedExercises.add(
               ParsedExerciseLog(
@@ -211,30 +213,112 @@ object OfflineRantParser {
       }
     }
 
-    // Check for missing weights or reps to ask user clarifications
-    for (ex in parsedExercises) {
-      val missingWeight = ex.sets.any { it.weightKg <= 0.0 }
-      val missingReps = ex.sets.any { it.reps <= 0 }
+    // If title was not explicitly in the notes, automatically deduce it from the exercises!
+    if (detectedTitle.isBlank() || detectedTitle == "Logged Workout") {
+      detectedTitle = suggestWorkoutTitle(parsedExercises)
+    }
+
+    // Ensure all sets have valid reps (never 0) - deduplicate unanswerable questions
+    val sanitizedExercises = parsedExercises.map { ex ->
+      val fixedSets = ex.sets.map { s ->
+        if (s.reps <= 0.0) s.copy(reps = 10.0) else s
+      }
+      ex.copy(sets = fixedSets)
+    }
+
+    // Only ask clarification for missing weight if it's NOT a bodyweight movement
+    for (ex in sanitizedExercises) {
+      val isBodyweight = isBodyweightExercise(ex.exerciseName)
+      val missingWeight = ex.sets.any { it.weightKg <= 0.0 } && !isBodyweight
       if (missingWeight) {
         clarifications.add("What weight was used for ${ex.exerciseName}?")
       }
-      if (missingReps) {
-        clarifications.add("How many reps were performed for ${ex.exerciseName}?")
-      }
     }
 
-    if (parsedExercises.isEmpty()) {
+    if (sanitizedExercises.isEmpty()) {
       clarifications.add("No specific lifts detected in this section. Please review exercises.")
     }
 
     return ParsedWorkoutRant(
       workoutTitle = detectedTitle,
-      exercises = parsedExercises,
+      exercises = sanitizedExercises,
       notes = clean,
       workoutDateMillis = dateMillis,
       dateDisplay = dateDisplay,
-      clarificationQuestions = clarifications
+      clarificationQuestions = clarifications,
+      detectedUnit = if (isLbs) "LBS" else "KG"
     )
+  }
+
+  fun suggestWorkoutTitle(exercises: List<ParsedExerciseLog>): String {
+    if (exercises.isEmpty()) return "Gym Workout"
+
+    var chestCount = 0
+    var backCount = 0
+    var legsCount = 0
+    var shouldersCount = 0
+    var armsCount = 0
+    var coreCount = 0
+
+    for (ex in exercises) {
+      val nameLower = ex.exerciseName.lowercase(Locale.ROOT)
+      when {
+        nameLower.contains("bench") || nameLower.contains("chest") || nameLower.contains("fly") || nameLower.contains("push up") || nameLower.contains("dip") -> chestCount++
+        nameLower.contains("row") || nameLower.contains("pull") || nameLower.contains("deadlift") || nameLower.contains("lat") -> backCount++
+        nameLower.contains("squat") || nameLower.contains("leg") || nameLower.contains("calf") || nameLower.contains("calves") || nameLower.contains("rdl") || nameLower.contains("hamstring") -> legsCount++
+        nameLower.contains("shoulder") || nameLower.contains("overhead") || nameLower.contains("military") || nameLower.contains("lateral") || nameLower.contains("delt") || nameLower.contains("face pull") -> shouldersCount++
+        nameLower.contains("curl") || nameLower.contains("tricep") || nameLower.contains("pushdown") || nameLower.contains("skull") || nameLower.contains("arm") -> armsCount++
+        nameLower.contains("plank") || nameLower.contains("ab") || nameLower.contains("crunch") -> coreCount++
+      }
+    }
+
+    val total = exercises.size
+    val pushCount = chestCount + shouldersCount
+    val pullCount = backCount + (if (armsCount > 0) 1 else 0)
+
+    return when {
+      legsCount >= 2 && legsCount >= (total / 2) -> "Leg Day"
+      chestCount >= 1 && (shouldersCount >= 1 || armsCount >= 1) && backCount == 0 -> "Push Day"
+      backCount >= 1 && armsCount >= 1 && chestCount == 0 && legsCount == 0 -> "Pull Day"
+      chestCount >= 2 && backCount == 0 && legsCount == 0 -> "Chest Day"
+      backCount >= 2 && chestCount == 0 && legsCount == 0 -> "Back Day"
+      legsCount >= 1 && chestCount == 0 && backCount == 0 -> "Leg Day"
+      chestCount >= 1 && backCount >= 1 && legsCount == 0 -> "Upper Body"
+      legsCount >= 1 && coreCount >= 1 && chestCount == 0 && backCount == 0 -> "Lower Body"
+      shouldersCount >= 1 && armsCount >= 1 && chestCount == 0 && backCount == 0 && legsCount == 0 -> "Shoulders & Arms"
+      shouldersCount >= 2 && chestCount == 0 && backCount == 0 -> "Shoulder Day"
+      armsCount >= 2 && chestCount == 0 && backCount == 0 -> "Arm Day"
+      pushCount >= 2 && pullCount == 0 -> "Push Day"
+      pullCount >= 2 && pushCount == 0 -> "Pull Day"
+      chestCount >= 1 && legsCount >= 1 && backCount >= 1 -> "Full Body"
+      else -> {
+        val top = listOf(
+          "Chest & Triceps" to chestCount,
+          "Back & Biceps" to backCount,
+          "Leg Day" to legsCount,
+          "Shoulders" to shouldersCount,
+          "Arms" to armsCount
+        ).maxByOrNull { it.second }
+        if (top != null && top.second > 0) top.first else "Gym Workout"
+      }
+    }
+  }
+
+  private fun isBodyweightExercise(name: String): Boolean {
+    val lower = name.lowercase(Locale.ROOT)
+    return lower.contains("pull-up") || lower.contains("pull up") ||
+      lower.contains("chin up") || lower.contains("chin-up") ||
+      lower.contains("dip") || lower.contains("push up") ||
+      lower.contains("push-up") || lower.contains("hanging leg raise") ||
+      lower.contains("plank") || lower.contains("bodyweight")
+  }
+
+  private fun hasTypicalPoundNumbers(text: String): Boolean {
+    val lower = text.lowercase(Locale.ROOT)
+    if (lower.contains("lb") || lower.contains("pound")) return true
+    if (Regex("""\b(35|40|45|50|55|60|65|70|75|80|85|90|95|100)s\b""").containsMatchIn(lower)) return true
+    if (Regex("""\b(135|155|185|205|225|245|275|315|365|405)\b""").containsMatchIn(lower)) return true
+    return false
   }
 
   private fun extractDateFromBlock(text: String, fallbackDayOffset: Int): Triple<Long, String, String?> {
@@ -333,7 +417,7 @@ object OfflineRantParser {
     return Triple(now, "Today", null)
   }
 
-  private fun parseSegment(segment: String): Pair<String?, List<ParsedSetLog>> {
+  private fun parseSegment(segment: String, isLbs: Boolean): Pair<String?, List<ParsedSetLog>> {
     val lower = segment.lowercase(Locale.ROOT)
 
     // Find best matching exercise
@@ -363,11 +447,12 @@ object OfflineRantParser {
     }
 
     // Extract sets, weight and reps
-    val sets = extractSetsFromText(segment)
+    val isBodyweight = isBodyweightExercise(matchedCanonical)
+    val sets = extractSetsFromText(segment, isLbs = isLbs, isBodyweight = isBodyweight)
     return Pair(matchedCanonical, sets)
   }
 
-  private fun extractSetsFromText(text: String): List<ParsedSetLog> {
+  private fun extractSetsFromText(text: String, isLbs: Boolean, isBodyweight: Boolean): List<ParsedSetLog> {
     val results = mutableListOf<ParsedSetLog>()
     val lower = text.lowercase(Locale.ROOT)
 
@@ -399,17 +484,21 @@ object OfflineRantParser {
     var dropReps = 0.0
     val dropMatch = Regex("""(?:drop(?:ped)?(?:\s+to)?)\s+([0-9]+(?:\.[0-9]+)?)\s*(?:kg|lbs)?(?:\s*(?:for)?\s*([0-9]+(?:\.[0-9]+)?)\s*reps?)?""", RegexOption.IGNORE_CASE).find(text)
     if (dropMatch != null) {
-      dropWeight = dropMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+      val rawDrop = dropMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+      dropWeight = if (isLbs) (rawDrop / 2.20462) else rawDrop
       dropReps = dropMatch.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 4.0
     }
+
+    fun toKg(raw: Double): Double = if (isLbs) (raw / 2.20462) else raw
 
     // Pattern 1: 80kg 3x8 or 80 kg 3x8.5 or 80kg x 3x8 or 80lbs 3x8
     val patternSetsX = Regex("([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?\\s*(?:for)?\\s*([0-9]+)\\s*(?:x|sets?\\s*(?:of)?)\\s*([0-9]+(?:\\.[0-9]+)?)", RegexOption.IGNORE_CASE)
     val matchSetsX = patternSetsX.find(text)
     if (matchSetsX != null) {
-      val weight = matchSetsX.groupValues[1].toDoubleOrNull() ?: 50.0
+      val rawWeight = matchSetsX.groupValues[1].toDoubleOrNull() ?: 50.0
       val numSets = matchSetsX.groupValues[2].toIntOrNull() ?: 3
       val reps = matchSetsX.groupValues[3].toDoubleOrNull() ?: 10.0
+      val weight = toKg(rawWeight)
       repeat(numSets.coerceIn(1, 10)) {
         results.add(
           ParsedSetLog(
@@ -432,7 +521,8 @@ object OfflineRantParser {
     if (matchSetsAt != null) {
       val numSets = matchSetsAt.groupValues[1].toIntOrNull() ?: 3
       val reps = matchSetsAt.groupValues[2].toDoubleOrNull() ?: 10.0
-      val weight = matchSetsAt.groupValues[3].toDoubleOrNull() ?: 50.0
+      val rawWeight = matchSetsAt.groupValues[3].toDoubleOrNull() ?: 50.0
+      val weight = toKg(rawWeight)
       repeat(numSets.coerceIn(1, 10)) {
         results.add(
           ParsedSetLog(
@@ -453,10 +543,11 @@ object OfflineRantParser {
     val patternList = Regex("([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?\\s*(?:for)?\\s*([0-9]+(?:\\.[0-9]+)?(?:\\s*[,\\s]\\s*[0-9]+(?:\\.[0-9]+)?)+)", RegexOption.IGNORE_CASE)
     val matchList = patternList.find(text)
     if (matchList != null) {
-      val weight = matchList.groupValues[1].toDoubleOrNull() ?: 40.0
+      val rawWeight = matchList.groupValues[1].toDoubleOrNull() ?: 40.0
       val repsPart = matchList.groupValues[2]
       val repsTokens = repsPart.split(Regex("[,\\s]+")).mapNotNull { it.toDoubleOrNull() }
       if (repsTokens.isNotEmpty()) {
+        val weight = toKg(rawWeight)
         for (r in repsTokens) {
           if (r in 0.5..100.0) {
             results.add(
@@ -480,26 +571,62 @@ object OfflineRantParser {
     val patternSingle = Regex("([0-9]+(?:\\.[0-9]+)?)\\s*(?:kg|lbs)?\\s*(?:for)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:reps?)?", RegexOption.IGNORE_CASE)
     val matchSingle = patternSingle.find(text)
     if (matchSingle != null) {
-      val weight = matchSingle.groupValues[1].toDoubleOrNull() ?: 50.0
-      val reps = matchSingle.groupValues[2].toDoubleOrNull() ?: 8.0
-      results.add(
-        ParsedSetLog(
-          weightKg = weight,
-          reps = reps,
-          biofeedbackTags = bioString,
-          tempo = tempo,
-          failurePoint = failurePoint,
-          dropWeightKg = dropWeight,
-          dropReps = dropReps
+      val rawWeight = matchSingle.groupValues[1].toDoubleOrNull() ?: 50.0
+      val reps = matchSingle.groupValues[2].toDoubleOrNull() ?: 10.0
+      val weight = toKg(rawWeight)
+      repeat(3) {
+        results.add(
+          ParsedSetLog(
+            weightKg = weight,
+            reps = reps,
+            biofeedbackTags = bioString,
+            tempo = tempo,
+            failurePoint = failurePoint,
+            dropWeightKg = dropWeight,
+            dropReps = dropReps
+          )
         )
-      )
+      }
       return results
     }
 
-    // Default fallback sets
-    results.add(ParsedSetLog(weightKg = 50.0, reps = 10.0, biofeedbackTags = bioString, tempo = tempo))
-    results.add(ParsedSetLog(weightKg = 50.0, reps = 10.0, biofeedbackTags = bioString, tempo = tempo))
-    results.add(ParsedSetLog(weightKg = 50.0, reps = 8.0, biofeedbackTags = bioString, tempo = tempo))
+    // Pattern 5: Weight only with 's' or 'lbs' (e.g. "60s" or "60 lbs" or "with 60")
+    val patternWeightOnly = Regex("""(?:with\s+|at\s+)?([0-9]+(?:\.[0-9]+)?)\s*(?:s|lbs?|kg)?""", RegexOption.IGNORE_CASE)
+    val matchWeightOnly = patternWeightOnly.find(text)
+    if (matchWeightOnly != null && !isBodyweight) {
+      val rawWeight = matchWeightOnly.groupValues[1].toDoubleOrNull()
+      if (rawWeight != null && rawWeight > 0.0) {
+        val weight = toKg(rawWeight)
+        repeat(3) {
+          results.add(
+            ParsedSetLog(
+              weightKg = weight,
+              reps = 10.0,
+              biofeedbackTags = bioString,
+              tempo = tempo,
+              failurePoint = failurePoint,
+              dropWeightKg = dropWeight,
+              dropReps = dropReps
+            )
+          )
+        }
+        return results
+      }
+    }
+
+    // Bodyweight default (dips, pullups, pushups)
+    if (isBodyweight) {
+      repeat(3) {
+        results.add(ParsedSetLog(weightKg = 0.0, reps = 10.0, biofeedbackTags = bioString, tempo = tempo))
+      }
+      return results
+    }
+
+    // Default fallback sets: sensible working weight
+    val defaultWeight = if (isLbs) (50.0 / 2.20462) else 25.0
+    results.add(ParsedSetLog(weightKg = defaultWeight, reps = 10.0, biofeedbackTags = bioString, tempo = tempo))
+    results.add(ParsedSetLog(weightKg = defaultWeight, reps = 10.0, biofeedbackTags = bioString, tempo = tempo))
+    results.add(ParsedSetLog(weightKg = defaultWeight, reps = 8.0, biofeedbackTags = bioString, tempo = tempo))
     return results
   }
 }

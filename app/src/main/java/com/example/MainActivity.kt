@@ -56,6 +56,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.MinimalDumbbellIcon
 import com.example.ui.screens.AndroidGuideScreen
+import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.ProfileScreen
 import com.example.ui.screens.ProgressScreen
 import com.example.ui.screens.TrainerScreen
@@ -77,9 +78,9 @@ import com.example.viewmodel.GymViewModel
 import com.example.viewmodel.GymViewModelFactory
 
 enum class AppTab(val title: String, val icon: ImageVector, val tag: String) {
+  PROGRESS("Progress", Icons.Default.TrendingUp, "nav_progress_tab"),
   WORKOUTS("Workouts", Icons.Default.FitnessCenter, "nav_workouts_tab"),
   TRAINER("Jim", Icons.Default.Psychology, "nav_trainer_tab"),
-  PROGRESS("Progress", Icons.Default.TrendingUp, "nav_progress_tab"),
   PROFILE("Profile", Icons.Default.Person, "nav_profile_tab")
 }
 
@@ -101,6 +102,17 @@ fun GymTrackerApp() {
   val context = LocalContext.current
   val application = context.applicationContext as android.app.Application
   val viewModel: GymViewModel = viewModel(factory = GymViewModelFactory(application))
+
+  val onboardingCompleted by viewModel.onboardingCompleted.collectAsState()
+
+  if (!onboardingCompleted) {
+    OnboardingScreen(
+      viewModel = viewModel,
+      modifier = Modifier.fillMaxSize(),
+      onFinish = {}
+    )
+    return
+  }
 
   var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
   var showGuideDialog by remember { mutableStateOf(false) }
@@ -239,9 +251,13 @@ fun GymTrackerApp() {
   ) { innerPadding ->
     val contentModifier = Modifier.padding(innerPadding)
     when (tabs[selectedTabIndex]) {
+      AppTab.PROGRESS -> ProgressScreen(
+        viewModel = viewModel,
+        modifier = contentModifier,
+        onNavigateToWorkouts = { selectedTabIndex = 1 }
+      )
       AppTab.WORKOUTS -> WorkoutScreen(viewModel = viewModel, modifier = contentModifier)
       AppTab.TRAINER -> TrainerScreen(viewModel = viewModel, modifier = contentModifier)
-      AppTab.PROGRESS -> ProgressScreen(viewModel = viewModel, modifier = contentModifier)
       AppTab.PROFILE -> ProfileScreen(viewModel = viewModel, modifier = contentModifier)
     }
   }

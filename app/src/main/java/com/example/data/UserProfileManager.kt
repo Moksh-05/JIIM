@@ -22,6 +22,8 @@ data class UserProfile(
   val gender: String = "Male", // "Male", "Female", "Other"
   val heightCm: Double = 178.0,
   val weightKg: Double = 78.0,
+  val targetWeightKg: Double = 80.0,
+  val trainingDaysPerWeek: Int = 4,
   val activityLevel: String = "Moderate (3-4 gym days/wk)", // Sedentary, Light, Moderate, Heavy, Athlete
   val fitnessGoal: String = "Hypertrophy & Muscle Mass", // Hypertrophy, Strength & Power, Fat Loss / Cut, Recomposition
   val customBodyFatPercent: Double? = null // Optional override
@@ -100,6 +102,14 @@ data class UserProfile(
 
   val dailyWaterTargetLiters: Double
     get() = ((weightKg * 0.038) * 10).roundToInt() / 10.0
+
+  val targetCalories: Int
+    get() = when {
+      fitnessGoal.contains("Fat Loss") || fitnessGoal.contains("Cut") -> (tdeeCalories * 0.80).roundToInt()
+      fitnessGoal.contains("Hypertrophy") || fitnessGoal.contains("Muscle") -> (tdeeCalories * 1.10).roundToInt()
+      fitnessGoal.contains("Strength") -> (tdeeCalories * 1.05).roundToInt()
+      else -> tdeeCalories
+    }
 }
 
 data class DashboardPreferences(
@@ -123,6 +133,16 @@ class UserProfileManager(context: Context) {
 
   private val _customExercises = MutableStateFlow(loadCustomExercises())
   val customExercises: StateFlow<List<ExerciseDefinition>> = _customExercises.asStateFlow()
+
+  fun hasCompletedOnboarding(): Boolean = prefs.getBoolean("has_completed_onboarding", false)
+
+  private val _onboardingCompleted = MutableStateFlow(hasCompletedOnboarding())
+  val onboardingCompleted: StateFlow<Boolean> = _onboardingCompleted.asStateFlow()
+
+  fun setOnboardingCompleted(completed: Boolean) {
+    prefs.edit().putBoolean("has_completed_onboarding", completed).apply()
+    _onboardingCompleted.value = completed
+  }
 
   fun updateProfile(newProfile: UserProfile) {
     _profile.value = newProfile
@@ -187,6 +207,8 @@ class UserProfileManager(context: Context) {
       gender = prefs.getString("user_gender", "Male") ?: "Male",
       heightCm = prefs.getFloat("user_height_cm", 178.0f).toDouble(),
       weightKg = prefs.getFloat("user_weight_kg", 78.0f).toDouble(),
+      targetWeightKg = prefs.getFloat("user_target_weight_kg", 80.0f).toDouble(),
+      trainingDaysPerWeek = prefs.getInt("user_training_days", 4),
       activityLevel = prefs.getString("user_activity", "Moderate (3-4 gym days/wk)") ?: "Moderate (3-4 gym days/wk)",
       fitnessGoal = prefs.getString("user_goal", "Hypertrophy & Muscle Mass") ?: "Hypertrophy & Muscle Mass",
       customBodyFatPercent = if (prefs.contains("user_custom_bf")) prefs.getFloat("user_custom_bf", 0f).toDouble() else null
@@ -200,6 +222,8 @@ class UserProfileManager(context: Context) {
       putString("user_gender", p.gender)
       putFloat("user_height_cm", p.heightCm.toFloat())
       putFloat("user_weight_kg", p.weightKg.toFloat())
+      putFloat("user_target_weight_kg", p.targetWeightKg.toFloat())
+      putInt("user_training_days", p.trainingDaysPerWeek)
       putString("user_activity", p.activityLevel)
       putString("user_goal", p.fitnessGoal)
       if (p.customBodyFatPercent != null) {

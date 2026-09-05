@@ -157,6 +157,17 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   val userProfile: StateFlow<com.example.data.UserProfile> = userProfileManager.profile
   val dashboardPrefs: StateFlow<com.example.data.DashboardPreferences> = userProfileManager.dashboardPrefs
   val customExercises: StateFlow<List<com.example.model.ExerciseDefinition>> = userProfileManager.customExercises
+  val onboardingCompleted: StateFlow<Boolean> = userProfileManager.onboardingCompleted
+
+  fun completeOnboarding(profile: com.example.data.UserProfile) {
+    userProfileManager.updateProfile(profile)
+    logBodyWeight(profile.weightKg)
+    userProfileManager.setOnboardingCompleted(true)
+  }
+
+  fun resetOnboarding() {
+    userProfileManager.setOnboardingCompleted(false)
+  }
 
   fun updateProfile(profile: com.example.data.UserProfile) {
     userProfileManager.updateProfile(profile)
@@ -358,11 +369,15 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
   // Unit toggle: kg vs lbs
-  private val _useLbs = MutableStateFlow(false)
+  private val _useLbs = MutableStateFlow(true)
   val useLbs: StateFlow<Boolean> = _useLbs.asStateFlow()
 
   fun toggleUnits() {
     _useLbs.value = !_useLbs.value
+  }
+
+  fun setUseLbs(lbs: Boolean) {
+    _useLbs.value = lbs
   }
 
   // -------------------------------------------------------------
@@ -669,35 +684,48 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
     viewModelScope.launch {
       _isParsingRant.value = true
       try {
-        val results = geminiService.parseGymRants(rantText, isOnline.value)
-        _parsedRants.value = results
-        _parsedRant.value = results.firstOrNull()
+        val rawResults = geminiService.parseGymRants(rantText, isOnline.value)
+        
+        // Auto-sanitize: ensure all sets have valid reps (deduce default 10 reps), and detect title
+        val sanitizedResults = rawResults.map { rant ->
+          val fixedExercises = rant.exercises.map { ex ->
+            val fixedSets = ex.sets.map { s ->
+              if (s.reps <= 0.0) s.copy(reps = 10.0) else s
+            }
+            ex.copy(sets = fixedSets)
+          }
+          val title = if (rant.workoutTitle.isBlank() || rant.workoutTitle.equals("Logged Workout", ignoreCase = true) || rant.workoutTitle.equals("Workout", ignoreCase = true)) {
+            com.example.data.OfflineRantParser.suggestWorkoutTitle(fixedExercises)
+          } else {
+            rant.workoutTitle
+          }
+          rant.copy(workoutTitle = title, exercises = fixedExercises)
+        }
+
+        if (sanitizedResults.any { it.detectedUnit.equals("LBS", ignoreCase = true) }) {
+          _useLbs.value = true
+        }
+
+        _parsedRants.value = sanitizedResults
+        _parsedRant.value = sanitizedResults.firstOrNull()
 
         val needed = mutableListOf<RamblerClarification>()
-        results.forEachIndexed { rIdx, rant ->
+        sanitizedResults.forEachIndexed { rIdx, rant ->
           val datePrefix = rant.dateDisplay?.takeIf { it.isNotBlank() }?.let { "[$it] " } ?: ""
           rant.exercises.forEachIndexed { idx, ex ->
+            val isBodyweight = isBodyweight(ex.exerciseName)
             val zeroWeightSets = ex.sets.filter { it.weightKg <= 0.0 }
-            val zeroRepSets = ex.sets.filter { it.reps <= 0 }
 
-            if (zeroWeightSets.isNotEmpty()) {
+            // Only ask for weight if it's NOT bodyweight (never ask for reps, reps are auto-inferred!)
+            if (!isBodyweight && zeroWeightSets.isNotEmpty()) {
+              val defaultWeight = if (_useLbs.value) (50.0 / 2.20462) else 25.0
               needed.add(
                 RamblerClarification(
                   exerciseIndex = idx,
                   exerciseName = ex.exerciseName,
                   question = "${datePrefix}What weight did you use for ${ex.exerciseName}?",
-                  initialWeightKg = 0.0,
+                  initialWeightKg = defaultWeight,
                   initialReps = ex.sets.firstOrNull()?.reps?.toInt() ?: 10
-                )
-              )
-            } else if (zeroRepSets.isNotEmpty()) {
-              needed.add(
-                RamblerClarification(
-                  exerciseIndex = idx,
-                  exerciseName = ex.exerciseName,
-                  question = "${datePrefix}How many reps did you complete for ${ex.exerciseName}?",
-                  initialWeightKg = ex.sets.firstOrNull()?.weightKg ?: 20.0,
-                  initialReps = 10
                 )
               )
             }
@@ -710,11 +738,20 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
+  private fun isBodyweight(name: String): Boolean {
+    val lower = name.lowercase(java.util.Locale.ROOT)
+    return lower.contains("pull-up") || lower.contains("pull up") ||
+      lower.contains("chin up") || lower.contains("chin-up") ||
+      lower.contains("dip") || lower.contains("push up") ||
+      lower.contains("push-up") || lower.contains("hanging leg raise") ||
+      lower.contains("plank") || lower.contains("bodyweight")
+  }
+
   fun updateClarification(exerciseIndex: Int, newWeightKg: Double, newReps: Int) {
     val currentRants = _parsedRants.value.toMutableList()
-    if (currentRants.isNotEmpty()) {
-      // Update first rant or any matching
-      val rant = currentRants[0]
+    var updatedAny = false
+    for (rIdx in currentRants.indices) {
+      val rant = currentRants[rIdx]
       val updatedExercises = rant.exercises.toMutableList()
       if (exerciseIndex in updatedExercises.indices) {
         val ex = updatedExercises[exerciseIndex]
@@ -725,10 +762,14 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
           )
         }
         updatedExercises[exerciseIndex] = ex.copy(sets = updatedSets)
-        currentRants[0] = rant.copy(exercises = updatedExercises)
-        _parsedRants.value = currentRants
-        _parsedRant.value = currentRants.firstOrNull()
+        currentRants[rIdx] = rant.copy(exercises = updatedExercises)
+        updatedAny = true
+        break
       }
+    }
+    if (updatedAny) {
+      _parsedRants.value = currentRants
+      _parsedRant.value = currentRants.firstOrNull()
     }
     _clarifications.value = _clarifications.value.filterNot { it.exerciseIndex == exerciseIndex }
   }

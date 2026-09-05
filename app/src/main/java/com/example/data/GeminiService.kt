@@ -63,21 +63,49 @@ class GeminiService {
         You map unstructured, rant-style lifter notes into a structured workout schema.
         
         CRITICAL PARSING RULES:
-        1. Fractional & Partial Reps: Recognize decimal points in reps (e.g., "6.5 reps failure", "8.25 reps", "failed at 6.5") as exact decimal numbers in "reps" (e.g. 6.5). Never round up to an integer!
-        2. Muscular Failure Points: If the lifter mentions where they failed (e.g. "preacher curl machine stuck at 90 degrees", "failed at 6.5 reps"), record this in "failurePoint".
-        3. Biofeedback Translation: Map subjective notes into standardized tags in "biofeedbackTags" array:
+        1. Set-by-Set Tracking & Detailed Logs: Break down lifts into distinct, individual sets!
+           - "incline db 60s 10, 8, 8" -> 3 sets: Set 1: 60 lbs x 10, Set 2: 60 lbs x 8, Set 3: 60 lbs x 8.
+           - "3 sets of 10 at 185" -> 3 sets: 185 lbs x 10 reps each.
+           - "heavy single 225, then 185 3x8" -> Set 1: 225 lbs x 1, Set 2: 185 lbs x 8, Set 3: 185 lbs x 8, Set 4: 185 lbs x 8.
+        2. Smart Rep Inference (NEVER ask the lifter what reps they did in the past):
+           - If reps are not specified for an exercise (e.g., "incline dumbbell press 60s 3 sets" or "did bench with 185"):
+             Intelligently infer standard hypertrophy reps based on the exercise type:
+             * Heavy Barbell Compounds (Bench, Squat, Deadlift, Barbell Row, OHP): 6-8 reps
+             * Dumbbell Presses, Dumbbell Rows, Lunges: 8-10 reps
+             * Cables, Machines, Curls, Tricep Pushdowns, Lateral Raises: 10-12 reps
+             * Bodyweight, Abs, Calves: 12-15 reps
+           - NEVER output 0 reps or ask "How many reps did you complete on [date]?". Lifters do not remember historical reps from weeks ago. Deduce them seamlessly!
+        3. Automatic Workout Title Analysis:
+           - Analyze the collection of exercises in each session and assign an intuitive, descriptive workout name:
+             * Chest, Upper Chest, Triceps, Shoulders -> "Push Day" or "Chest & Triceps"
+             * Back, Lat Pulldown, Rows, Bicep Curls -> "Pull Day" or "Back & Biceps"
+             * Squats, Leg Press, Leg Extension, Hamstrings, Calves -> "Leg Day"
+             * Chest and Back together -> "Upper Body"
+             * Legs and Core -> "Lower Body"
+             * Biceps, Triceps, Delts -> "Arms & Shoulders"
+             * Full body spectrum -> "Full Body"
+           - If the user explicitly provided a title (e.g. "Push Day 1", "Heavy Leg Day"), prioritize their title.
+           - NEVER return generic "Logged Workout" or leave the title empty!
+        4. Pounds (LBS) vs Kilograms (KG) Unit Detection:
+           - Analyze whether the lifter's weights are in pounds (LBS) or kilograms (KG).
+           - If the lifter mentions "lb", "lbs", "pounds", or uses typical American dumbbell sizes (e.g. 35s, 40s, 50s, 60s, 70s, 80s) or barbell plate numbers (e.g. 95, 135, 155, 185, 205, 225, 245, 275, 315) without explicitly specifying "kg":
+             Treat the unit as "LBS"!
+           - If weights are in LBS, convert them to kilograms for storage: `weightKg = weightLbs / 2.20462`, rounded to 1 decimal place (e.g., 60 lbs -> 27.2 kg, 185 lbs -> 83.9 kg, 225 lbs -> 102.1 kg, 50 lbs -> 22.7 kg).
+           - Output "detectedUnit": "LBS" (or "KG" if explicitly in kg).
+        5. Fractional & Partial Reps: Recognize decimal points in reps (e.g., "6.5 reps failure", "failed at 6.5") as exact decimal numbers in "reps" (e.g. 6.5). Never round up to an integer!
+        6. Muscular Failure Points: If the lifter mentions where they failed (e.g. "preacher curl machine stuck at 90 degrees", "failed at 6.5 reps"), record this in "failurePoint".
+        7. Biofeedback Translation: Map subjective notes into standardized tags in "biofeedbackTags" array:
            - "fingers hurt", "grip gave out", "straps slipped" -> "grip_fatigue"
            - "felt awkward", "form breakdown", "lost arch" -> "form_breakdown"
            - "left arm weaker", "discrepancy" -> "asymmetry"
            - "armpit discomfort", "shoulder pinch", "knee twinge" -> "joint_discomfort"
            - "insane burn", "mind-muscle peak", "crazy pump" -> "peak_burn"
            - "gassed out", "out of breath", "cardio fatigue" -> "cardio_fatigue"
-        4. Asymmetric Unilateral Discrepancies: If left and right sides performed different reps or weights (e.g. "cable lateral raises left arm hit 15 reps, right arm hit 17 reps"), split them into dual exercise entries or separate sets marked with side "LEFT" and "RIGHT":
-           e.g. "Dumbbell Lateral Raise (Left)" side="LEFT", "Dumbbell Lateral Raise (Right)" side="RIGHT".
-        5. Mid-Set Adjustments & Drop Sets: If the lifter drops weight mid-set (e.g. "started at 20 lbs but dropped to 15 lbs for controlled negative burn"), capture the drop:
-           "dropWeightKg", "dropReps", and setKind="DROP".
-        6. Tempo & Form Cues: Capture tempo descriptions (e.g. "3-1-1-0", "explosive positive, controlled negative", "pause on chest") in "tempo".
-        7. Date Recognition: Identify if notes span multiple sessions/dates (e.g. "Aug 20", "Yesterday", "3 days ago"). Create a distinct workout object for each session!
+        8. Asymmetric Unilateral Discrepancies: If left and right sides performed different reps or weights, split them into dual exercise entries or separate sets marked with side "LEFT" and "RIGHT".
+        9. Mid-Set Adjustments & Drop Sets: If the lifter drops weight mid-set, capture "dropWeightKg", "dropReps", and setKind="DROP".
+        10. Bodyweight Exercises: For pull-ups, push-ups, dips, planks, and hanging leg raises, set weightKg=0.0.
+        11. Date Recognition: Identify if notes span multiple sessions/dates (e.g. "Aug 20", "Yesterday", "3 days ago"). Create a distinct workout object for each session!
+        12. Keep "clarificationQuestions" empty `[]`. Do NOT nag the user with unanswerable questions about past dates or reps.
         
         Text to parse:
         "$rantText"
@@ -85,23 +113,24 @@ class GeminiService {
         Respond ONLY with a valid JSON array of objects with this schema:
         [
           {
-            "workoutTitle": "Chest & Arms Hypertrophy",
+            "workoutTitle": "Push Day",
+            "detectedUnit": "LBS",
             "dateDisplay": "Yesterday",
             "workoutDateMillis": ${System.currentTimeMillis()},
             "notes": "Original notes",
             "exercises": [
               {
-                "exerciseName": "Preacher Curl",
+                "exerciseName": "Incline Dumbbell Press",
                 "isUnilateral": false,
                 "sets": [
                   {
-                    "weightKg": 35.0,
-                    "reps": 6.5,
-                    "setKind": "FAILURE",
+                    "weightKg": 27.2,
+                    "reps": 10.0,
+                    "setKind": "NORMAL",
                     "side": "BOTH",
-                    "failurePoint": "failed at 6.5 reps (mid-concentric)",
-                    "biofeedbackTags": ["form_breakdown"],
-                    "tempo": "explosive concentric, 3s eccentric",
+                    "failurePoint": "",
+                    "biofeedbackTags": [],
+                    "tempo": "controlled negative",
                     "dropWeightKg": 0.0,
                     "dropReps": 0.0
                   }
@@ -277,6 +306,8 @@ class GeminiService {
       val dateDisplay = obj.optString("dateDisplay", "Today")
       val dateMillis = obj.optLong("workoutDateMillis", System.currentTimeMillis())
 
+      val detectedUnit = obj.optString("detectedUnit", "LBS")
+
       val exercisesArr = obj.optJSONArray("exercises") ?: JSONArray()
       val exercisesList = mutableListOf<ParsedExerciseLog>()
 
@@ -289,7 +320,8 @@ class GeminiService {
         for (j in 0 until setsArr.length()) {
           val sObj = setsArr.getJSONObject(j)
           val weight = sObj.optDouble("weightKg", 0.0)
-          val reps = sObj.optDouble("reps", 10.0)
+          val rawReps = sObj.optDouble("reps", 10.0)
+          val reps = if (rawReps <= 0.0) 10.0 else rawReps
           val setKind = sObj.optString("setKind", "NORMAL")
           val side = sObj.optString("side", "BOTH")
           val failurePoint = sObj.optString("failurePoint", "")
@@ -337,6 +369,12 @@ class GeminiService {
         }
       }
 
+      val finalTitle = if (title.isBlank() || title.equals("Logged Workout", ignoreCase = true) || title.equals("Workout", ignoreCase = true)) {
+        OfflineRantParser.suggestWorkoutTitle(exercisesList)
+      } else {
+        title
+      }
+
       val questions = mutableListOf<String>()
       val qArr = obj.optJSONArray("clarificationQuestions")
       if (qArr != null) {
@@ -347,12 +385,13 @@ class GeminiService {
       }
 
       ParsedWorkoutRant(
-        workoutTitle = title,
+        workoutTitle = finalTitle,
         exercises = exercisesList,
         notes = notes,
         workoutDateMillis = dateMillis,
         dateDisplay = dateDisplay,
-        clarificationQuestions = questions
+        clarificationQuestions = questions,
+        detectedUnit = detectedUnit
       )
     } catch (_: Exception) {
       null

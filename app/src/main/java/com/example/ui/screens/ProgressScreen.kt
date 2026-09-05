@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import kotlin.math.roundToInt
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -91,7 +92,8 @@ import java.util.Locale
 @Composable
 fun ProgressScreen(
   viewModel: GymViewModel,
-  modifier: Modifier = Modifier
+  modifier: Modifier = Modifier,
+  onNavigateToWorkouts: () -> Unit = {}
 ) {
   val workouts by viewModel.allWorkouts.collectAsState()
   val bodyWeights by viewModel.allBodyWeights.collectAsState()
@@ -100,6 +102,7 @@ fun ProgressScreen(
   val isOnline by viewModel.isOnline.collectAsState()
   val useLbs by viewModel.useLbs.collectAsState()
   val customExercises by viewModel.customExercises.collectAsState()
+  val userProfile by viewModel.userProfile.collectAsState()
 
   // Tracked Exercise for Metric 1
   var selectedExercise by remember { mutableStateOf("Barbell Bench Press") }
@@ -126,49 +129,245 @@ fun ProgressScreen(
     )
   }
 
+  // Weekly consistency calculation
+  val weekAdherence = remember(workouts) {
+    val cal = java.util.Calendar.getInstance().apply {
+      firstDayOfWeek = java.util.Calendar.MONDAY
+      set(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.MONDAY)
+      set(java.util.Calendar.HOUR_OF_DAY, 0)
+      set(java.util.Calendar.MINUTE, 0)
+      set(java.util.Calendar.SECOND, 0)
+      set(java.util.Calendar.MILLISECOND, 0)
+    }
+    val todayCal = java.util.Calendar.getInstance()
+    val dayLetters = listOf("M", "T", "W", "T", "F", "S", "S")
+
+    (0..6).map { offset ->
+      val dayCal = (cal.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, offset) }
+      val startMs = dayCal.timeInMillis
+      val endMs = startMs + 86400000L
+      val dayWorkouts = workouts.filter { it.session.startTimeMillis in startMs until endMs }
+      val isTrained = dayWorkouts.isNotEmpty()
+      val isToday = dayCal.get(java.util.Calendar.DAY_OF_YEAR) == todayCal.get(java.util.Calendar.DAY_OF_YEAR) &&
+                    dayCal.get(java.util.Calendar.YEAR) == todayCal.get(java.util.Calendar.YEAR)
+      val dayNum = dayCal.get(java.util.Calendar.DAY_OF_MONTH)
+      object {
+        val letter = dayLetters[offset]
+        val dayNumber = dayNum
+        val trained = isTrained
+        val today = isToday
+      }
+    }
+  }
+  val daysTrainedThisWeek = remember(weekAdherence) { weekAdherence.count { it.trained } }
+
   LazyColumn(
     modifier = modifier
       .fillMaxSize()
       .background(MatteBlack)
       .padding(horizontal = 16.dp),
-    verticalArrangement = Arrangement.spacedBy(18.dp)
+    verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
-    // Header
+    // -------------------------------------------------------------
+    // TOP HERO: GOALS & ARCHITECTURE (MacroFactor Aesthetic)
+    // -------------------------------------------------------------
     item {
-      Spacer(modifier = Modifier.height(10.dp))
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Column {
-          Text(
-            text = "ANALYTICS & METRICS",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.5.sp,
-            color = PlatinumSteel
-          )
-          Text(
-            text = "Progress Tracking",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = TitaniumWhite
-          )
-        }
+      Spacer(modifier = Modifier.height(6.dp))
 
-        Surface(
-          shape = RoundedCornerShape(8.dp),
-          color = CardElevated,
-          border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
-        ) {
-          Text(
-            text = "3 Key Metrics",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = TitaniumSilver,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-          )
+      Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+        modifier = Modifier.fillMaxWidth().testTag("progress_hero_card")
+      ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column {
+              Text(
+                text = "PROGRESS DASHBOARD",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp,
+                color = PlatinumSteel
+              )
+              Text(
+                text = userProfile.name,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black,
+                color = TitaniumWhite
+              )
+            }
+
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = CardElevated,
+              border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight)
+            ) {
+              Text(
+                text = userProfile.fitnessGoal,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = TitaniumWhite,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(14.dp))
+
+          // 3 Metric Pills
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            val curWeight = if (useLbs) "${(userProfile.weightKg * 2.20462).roundToInt()} lbs" else "${userProfile.weightKg.roundToInt()} kg"
+            val targetWeight = if (useLbs) "${(userProfile.targetWeightKg * 2.20462).roundToInt()} lbs" else "${userProfile.targetWeightKg.roundToInt()} kg"
+
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = CardDark,
+              border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle),
+              modifier = Modifier.weight(1f)
+            ) {
+              Column(modifier = Modifier.padding(10.dp)) {
+                Text("WEIGHT GOAL", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = PlatinumSteel)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text("$curWeight → $targetWeight", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TitaniumWhite)
+              }
+            }
+
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = CardDark,
+              border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle),
+              modifier = Modifier.weight(1f)
+            ) {
+              Column(modifier = Modifier.padding(10.dp)) {
+                Text("ENERGY & PROTEIN", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = PlatinumSteel)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text("${userProfile.targetCalories} kcal • ${userProfile.dailyProteinTargetGrams}g", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TitaniumWhite)
+              }
+            }
+
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = CardDark,
+              border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle),
+              modifier = Modifier.weight(1f)
+            ) {
+              Column(modifier = Modifier.padding(10.dp)) {
+                Text("TARGET SPLIT", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = PlatinumSteel)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text("${userProfile.trainingDaysPerWeek} Days / Wk", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TitaniumWhite)
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // WEEKLY CONSISTENCY & QUICK ACTION
+    // -------------------------------------------------------------
+    item {
+      Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = SurfaceDark,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+        modifier = Modifier.fillMaxWidth().testTag("weekly_adherence_card")
+      ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column {
+              Text(
+                text = "THIS WEEK'S ADHERENCE",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                color = PlatinumSteel
+              )
+              Text(
+                text = "$daysTrainedThisWeek of ${userProfile.trainingDaysPerWeek} Target Sessions",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = TitaniumWhite
+              )
+            }
+
+            Button(
+              onClick = onNavigateToWorkouts,
+              colors = ButtonDefaults.buttonColors(
+                containerColor = TitaniumWhite,
+                contentColor = MatteBlack
+              ),
+              shape = RoundedCornerShape(10.dp),
+              modifier = Modifier.testTag("track_workout_hero_button")
+            ) {
+              Text("Track Workout", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+          }
+
+          Spacer(modifier = Modifier.height(12.dp))
+
+          // Aesthetic 7-day strip
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            weekAdherence.forEach { day ->
+              Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.weight(1f)
+              ) {
+                Text(
+                  text = day.letter,
+                  fontSize = 11.sp,
+                  fontWeight = if (day.today) FontWeight.Black else FontWeight.SemiBold,
+                  color = if (day.today) TitaniumWhite else TextSecondary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Box(
+                  modifier = Modifier
+                    .size(width = 32.dp, height = 28.dp)
+                    .background(
+                      color = if (day.trained) Color(0xFF05DF72) else CardElevated,
+                      shape = RoundedCornerShape(8.dp)
+                    )
+                    .border(
+                      width = if (day.today) 1.5.dp else 0.5.dp,
+                      color = if (day.today) TitaniumWhite else BorderSubtle,
+                      shape = RoundedCornerShape(8.dp)
+                    ),
+                  contentAlignment = Alignment.Center
+                ) {
+                  if (day.trained) {
+                    Icon(
+                      Icons.Default.Check,
+                      contentDescription = "Trained",
+                      tint = MatteBlack,
+                      modifier = Modifier.size(14.dp)
+                    )
+                  } else {
+                    Text(
+                      text = "${day.dayNumber}",
+                      fontSize = 10.sp,
+                      fontWeight = if (day.today) FontWeight.Bold else FontWeight.Normal,
+                      color = if (day.today) TitaniumWhite else TextTertiary
+                    )
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

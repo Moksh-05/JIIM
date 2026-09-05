@@ -104,7 +104,8 @@ data class ParsedWorkoutRant(
   val notes: String = "",
   val workoutDateMillis: Long = System.currentTimeMillis(),
   val dateDisplay: String = "Today",
-  val clarificationQuestions: List<String> = emptyList()
+  val clarificationQuestions: List<String> = emptyList(),
+  val detectedUnit: String = "LBS"
 )
 
 data class ParsedExerciseLog(

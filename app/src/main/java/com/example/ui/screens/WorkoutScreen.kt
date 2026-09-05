@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -41,6 +43,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
@@ -106,6 +109,15 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+data class WeekDayAdherenceItem(
+  val letter: String,
+  val name: String,
+  val dayNumber: Int,
+  val trained: Boolean,
+  val today: Boolean,
+  val sets: Int
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WorkoutScreen(
@@ -169,6 +181,8 @@ fun WorkoutScreen(
   }
 
   var showDirectWeightDialog by remember { mutableStateOf(false) }
+  var showRamblerDialog by remember { mutableStateOf(false) }
+  var showSetLoggerDialog by remember { mutableStateOf(false) }
   var ramblerInput by remember { mutableStateOf("") }
 
   // Streak calculation
@@ -180,6 +194,7 @@ fun WorkoutScreen(
       rants = parsedRants,
       clarifications = clarifications,
       useLbs = useLbs,
+      onToggleUnits = { viewModel.toggleUnits() },
       onUpdateClarification = { idx, wt, reps ->
         viewModel.updateClarification(idx, wt, reps)
       },
@@ -338,6 +353,83 @@ fun WorkoutScreen(
     )
   }
 
+  if (showRamblerDialog) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = { showRamblerDialog = false }) {
+      RamblerInputCard(
+        isOnline = isOnline,
+        isParsingRant = isParsingRant,
+        onParseRant = { text ->
+          showRamblerDialog = false
+          viewModel.parseGymRant(text)
+        },
+        onDismiss = { showRamblerDialog = false }
+      )
+    }
+  }
+
+  if (showSetLoggerDialog) {
+    QuickSetLoggerDialog(
+      allAvailableExercises = allAvailableExercises,
+      splitExercises = splitExercises,
+      selectedExerciseName = selectedExerciseName,
+      onSelectExercise = { exName ->
+        selectedExerciseName = exName
+        val tgt = viewModel.getTargetForExercise(exName, currentActiveSplit)
+        if (tgt.lastWeightKg > 0) {
+          selectedWeightKg = tgt.lastWeightKg
+          selectedReps = tgt.lastReps.coerceAtLeast(1)
+        }
+      },
+      selectedWeightKg = selectedWeightKg,
+      onWeightChange = { selectedWeightKg = it },
+      selectedReps = selectedReps,
+      onRepsChange = { selectedReps = it },
+      hasFractionalRep = hasFractionalRep,
+      onFractionalRepChange = { hasFractionalRep = it },
+      isUnilateralMode = isUnilateralMode,
+      onUnilateralModeChange = { isUnilateralMode = it },
+      selectedSide = selectedSide,
+      onSideChange = { selectedSide = it },
+      selectedBiofeedbackTags = selectedBiofeedbackTags,
+      onToggleBiofeedbackTag = { tag ->
+        selectedBiofeedbackTags = if (selectedBiofeedbackTags.contains(tag)) {
+          selectedBiofeedbackTags - tag
+        } else {
+          selectedBiofeedbackTags + tag
+        }
+      },
+      selectedTempo = selectedTempo,
+      onTempoChange = { selectedTempo = it },
+      selectedFailurePoint = selectedFailurePoint,
+      onFailurePointChange = { selectedFailurePoint = it },
+      useLbs = useLbs,
+      onOpenDirectWeightDialog = { showDirectWeightDialog = true },
+      onOpenExerciseSearch = { isExerciseSearchOpen = true },
+      onOpenAddCustomExercise = { showAddCustomExerciseDialog = true },
+      currentExerciseTarget = viewModel.getTargetForExercise(selectedExerciseName, currentActiveSplit),
+      onMatchLastTarget = { wt, reps ->
+        selectedWeightKg = wt
+        selectedReps = reps
+      },
+      onLogSet = {
+        val finalReps = if (hasFractionalRep) selectedReps + 0.5 else selectedReps.toDouble()
+        viewModel.addSetToActiveSession(
+          exerciseName = selectedExerciseName,
+          weightKg = selectedWeightKg,
+          reps = finalReps,
+          setKind = "NORMAL",
+          side = if (isUnilateralMode) selectedSide else "BOTH",
+          biofeedbackTags = selectedBiofeedbackTags.toList(),
+          tempo = selectedTempo,
+          failurePoint = selectedFailurePoint,
+          isUnilateral = isUnilateralMode
+        )
+        showSetLoggerDialog = false
+      },
+      onDismiss = { showSetLoggerDialog = false }
+    )
+  }
+
   val todayDayFormat = remember { SimpleDateFormat("EEEE", Locale.getDefault()) }
   val todayDateFormat = remember { SimpleDateFormat("MMMM d, yyyy", Locale.getDefault()) }
   val now = remember { Date() }
@@ -421,13 +513,14 @@ fun WorkoutScreen(
             val isToday = dayCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR) &&
                           dayCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR)
             val daySets = dayWorkouts.sumOf { it.session.totalSets }
-            object {
-              val letter = dayLetters[offset]
-              val name = dayNames[offset]
-              val trained = isTrained
-              val today = isToday
-              val sets = daySets
-            }
+            WeekDayAdherenceItem(
+              letter = dayLetters[offset],
+              name = dayNames[offset],
+              dayNumber = dayCal.get(Calendar.DAY_OF_MONTH),
+              trained = isTrained,
+              today = isToday,
+              sets = daySets
+            )
           }
         }
         val trainedDaysCount = remember(weekAdherence) { weekAdherence.count { it.trained } }
@@ -438,7 +531,7 @@ fun WorkoutScreen(
           shape = RoundedCornerShape(16.dp),
           color = SurfaceDark,
           border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
-          modifier = Modifier.fillMaxWidth()
+          modifier = Modifier.fillMaxWidth().testTag("workout_weekly_calendar_card")
         ) {
           Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -452,7 +545,7 @@ fun WorkoutScreen(
                   fontSize = 10.sp,
                   fontWeight = FontWeight.Bold,
                   letterSpacing = 1.2.sp,
-                  color = TextSecondary
+                  color = PlatinumSteel
                 )
                 Text(
                   text = "$trainedDaysCount of 7 Days Logged",
@@ -479,7 +572,7 @@ fun WorkoutScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 7-day pill row
+            // 7-day pill row (Aesthetic MacroFactor design)
             Row(
               modifier = Modifier.fillMaxWidth(),
               horizontalArrangement = Arrangement.SpaceBetween,
@@ -499,15 +592,15 @@ fun WorkoutScreen(
                   Spacer(modifier = Modifier.height(6.dp))
                   Box(
                     modifier = Modifier
-                      .size(width = 30.dp, height = 18.dp)
+                      .size(width = 32.dp, height = 26.dp)
                       .background(
                         color = if (day.trained) Color(0xFF05DF72) else CardElevated,
-                        shape = RoundedCornerShape(6.dp)
+                        shape = RoundedCornerShape(8.dp)
                       )
                       .border(
                         width = if (day.today) 1.5.dp else 0.5.dp,
                         color = if (day.today) TitaniumWhite else BorderSubtle,
-                        shape = RoundedCornerShape(6.dp)
+                        shape = RoundedCornerShape(8.dp)
                       ),
                     contentAlignment = Alignment.Center
                   ) {
@@ -516,105 +609,16 @@ fun WorkoutScreen(
                         Icons.Default.Check,
                         contentDescription = "Trained",
                         tint = MatteBlack,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(13.dp)
                       )
-                    } else if (day.today) {
-                      Box(
-                        modifier = Modifier
-                          .size(5.dp)
-                          .background(TitaniumWhite, CircleShape)
+                    } else {
+                      Text(
+                        text = "${day.dayNumber}",
+                        fontSize = 10.sp,
+                        fontWeight = if (day.today) FontWeight.Bold else FontWeight.Normal,
+                        color = if (day.today) TitaniumWhite else TextSecondary
                       )
                     }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // Tactical In-Gym Rest Timer (if enabled in settings)
-        if (dashboardPrefs.showRestTimer) {
-          Spacer(modifier = Modifier.height(12.dp))
-          Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = if (isRestTimerActive) Color(0xFF1B2230) else CardDark,
-            border = androidx.compose.foundation.BorderStroke(
-              1.dp,
-              if (isRestTimerActive) TitaniumWhite else BorderSubtle
-            ),
-            modifier = Modifier.fillMaxWidth()
-          ) {
-            Row(
-              modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                  modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(SurfaceDark)
-                    .border(1.dp, BorderHighlight, CircleShape),
-                  contentAlignment = Alignment.Center
-                ) {
-                  Icon(
-                    Icons.Default.Timer,
-                    contentDescription = null,
-                    tint = if (isRestTimerActive) TitaniumWhite else TitaniumSilver,
-                    modifier = Modifier.size(18.dp)
-                  )
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                  Text(
-                    text = if (isRestTimerActive) "REST TIMER RUNNING" else "GYM REST TIMER",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    color = if (isRestTimerActive) TitaniumWhite else TextSecondary
-                  )
-                  Text(
-                    text = if (isRestTimerActive) "${restTimerRemaining}s remaining" else "Default: ${dashboardPrefs.restTimerSeconds}s",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary
-                  )
-                }
-              }
-
-              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (isRestTimerActive) {
-                  Surface(
-                    onClick = { viewModel.stopRestTimer() },
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF331C1C),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f))
-                  ) {
-                    Text(
-                      text = "Reset",
-                      fontSize = 11.sp,
-                      fontWeight = FontWeight.Bold,
-                      color = Color(0xFFFCA5A5),
-                      modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                  }
-                } else {
-                  Surface(
-                    onClick = { viewModel.startRestTimer() },
-                    shape = RoundedCornerShape(8.dp),
-                    color = SurfaceDark,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight)
-                  ) {
-                    Text(
-                      text = "Start ${dashboardPrefs.restTimerSeconds}s",
-                      fontSize = 11.sp,
-                      fontWeight = FontWeight.Bold,
-                      color = TitaniumWhite,
-                      modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
                   }
                 }
               }
@@ -800,863 +804,139 @@ fun WorkoutScreen(
     }
 
     // -------------------------------------------------------------
-    // LOG EXERCISE (MAIN HEADING & TWO SELECTABLE METHODS)
+    // LOG WORKOUT (MINIMAL INTERFACE)
     // -------------------------------------------------------------
     item {
-      Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically
-        ) {
-          Column {
-            Text(
-              text = "LOG EXERCISE",
-              fontSize = 16.sp,
-              fontWeight = FontWeight.Black,
-              letterSpacing = 1.5.sp,
-              color = TextPrimary
-            )
-            Text(
-              text = "Choose your preferred logging method",
-              fontSize = 12.sp,
-              color = TextSecondary
-            )
-          }
-
-          // Inbuilt Add Custom Exercise Button
-          Surface(
-            onClick = { showAddCustomExerciseDialog = true },
-            shape = RoundedCornerShape(10.dp),
-            color = SurfaceDark,
-            border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
-            modifier = Modifier.testTag("inbuilt_add_exercise_button")
+      Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = SurfaceDark,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("minimal_log_exercise_card")
+      ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
           ) {
-            Row(
-              modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Icon(Icons.Default.Add, contentDescription = null, tint = TitaniumWhite, modifier = Modifier.size(16.dp))
-              Spacer(modifier = Modifier.width(4.dp))
+            Column {
               Text(
-                text = "Add Lift",
-                fontSize = 12.sp,
+                text = "LOG WORKOUT",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp,
+                color = PlatinumSteel
+              )
+              Text(
+                text = "Voice rant or set-by-set entry",
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = TitaniumWhite
               )
             }
-          }
-        }
 
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Two Selectable Method Cards (Method 1: Set-by-Set vs Method 2: The Rambler)
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-          // Method 1: Set Logger Card
-          val isMethod1 = selectedLoggingMethod == "SET_LOGGER"
-          Surface(
-            onClick = { viewModel.setLoggingMethod("SET_LOGGER") },
-            shape = RoundedCornerShape(16.dp),
-            color = if (isMethod1) CardElevated else CardDark,
-            border = androidx.compose.foundation.BorderStroke(
-              1.5.dp,
-              if (isMethod1) TitaniumWhite else BorderSubtle
-            ),
-            modifier = Modifier
-              .weight(1f)
-              .testTag("method_set_logger_card")
-          ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+            Surface(
+              onClick = { showAddCustomExerciseDialog = true },
+              shape = RoundedCornerShape(8.dp),
+              color = CardElevated,
+              border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+              modifier = Modifier.testTag("inbuilt_add_exercise_button")
+            ) {
               Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically
               ) {
-                Box(
-                  modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(if (isMethod1) TitaniumWhite else SurfaceDark),
-                  contentAlignment = Alignment.Center
-                ) {
-                  MinimalDumbbellIcon(
-                    tint = if (isMethod1) MatteBlack else TitaniumSilver,
-                    modifier = Modifier.size(18.dp)
-                  )
-                }
-
-                Box(
-                  modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (isMethod1) TitaniumWhite.copy(alpha = 0.15f) else SurfaceDark)
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                  Text(
-                    text = "METHOD 1",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isMethod1) TitaniumWhite else TextSecondary
-                  )
-                }
+                Icon(Icons.Default.Add, contentDescription = null, tint = TitaniumWhite, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "Custom",
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = TitaniumWhite
+                )
               }
-
-              Spacer(modifier = Modifier.height(12.dp))
-
-              Text(
-                text = "Set-by-Set",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-              )
-              Text(
-                text = "Tactile weights & rep wheel",
-                fontSize = 11.sp,
-                color = TextSecondary
-              )
             }
           }
 
-          // Method 2: The Rambler Card
-          val isMethod2 = selectedLoggingMethod == "RAMBLER"
-          Surface(
-            onClick = { viewModel.setLoggingMethod("RAMBLER") },
-            shape = RoundedCornerShape(16.dp),
-            color = if (isMethod2) CardElevated else CardDark,
-            border = androidx.compose.foundation.BorderStroke(
-              1.5.dp,
-              if (isMethod2) TitaniumWhite else BorderSubtle
-            ),
-            modifier = Modifier
-              .weight(1f)
-              .testTag("method_rambler_card")
+          Spacer(modifier = Modifier.height(14.dp))
+
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
           ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+            // The Rambler Button
+            Surface(
+              onClick = { showRamblerDialog = true },
+              shape = RoundedCornerShape(12.dp),
+              color = CardElevated,
+              border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+              modifier = Modifier
+                .weight(1f)
+                .testTag("open_rambler_button")
+            ) {
               Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
               ) {
                 Box(
                   modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(if (isMethod2) TitaniumWhite else SurfaceDark),
+                    .background(SurfaceDark),
                   contentAlignment = Alignment.Center
                 ) {
                   Icon(
                     Icons.AutoMirrored.Filled.Notes,
                     contentDescription = null,
-                    tint = if (isMethod2) MatteBlack else TitaniumSilver,
+                    tint = TitaniumWhite,
                     modifier = Modifier.size(18.dp)
                   )
                 }
-
-                Box(
-                  modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (isMethod2) TitaniumWhite.copy(alpha = 0.15f) else SurfaceDark)
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                  Text(
-                    text = "METHOD 2",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isMethod2) TitaniumWhite else TextSecondary
-                  )
-                }
-              }
-
-              Spacer(modifier = Modifier.height(12.dp))
-
-              Text(
-                text = "The Rambler",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-              )
-              Text(
-                text = "Stream of thoughts text or voice",
-                fontSize = 11.sp,
-                color = TextSecondary
-              )
-            }
-          }
-        }
-      }
-    }
-
-    // -------------------------------------------------------------
-    // ACTIVE METHOD INTERFACE (EXPANDED BASED ON SELECTION)
-    // -------------------------------------------------------------
-    item {
-      if (selectedLoggingMethod == "SET_LOGGER") {
-        // ---------------------------------------------------------
-        // METHOD 1: QUICK SET LOGGER
-        // ---------------------------------------------------------
-        Card(
-          shape = RoundedCornerShape(18.dp),
-          colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-          border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
-          modifier = Modifier.fillMaxWidth().testTag("exercise_logger_card")
-        ) {
-          Column(modifier = Modifier.padding(16.dp)) {
-            // Header with Exercise Picker & Inbuilt Add Button
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Text(
-                text = "SELECT EXERCISE",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                color = TitaniumSilver
-              )
-
-              Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Surface(
-                  onClick = { showAddCustomExerciseDialog = true },
-                  shape = RoundedCornerShape(8.dp),
-                  color = CardElevated,
-                  border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
-                ) {
-                  Text(
-                    text = "+ New",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TitaniumWhite,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                  )
-                }
-
-                Surface(
-                  onClick = { isExerciseSearchOpen = true },
-                  shape = RoundedCornerShape(8.dp),
-                  color = CardElevated,
-                  border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
-                  modifier = Modifier.testTag("change_exercise_button")
-                ) {
-                  Text(
-                    text = "Browse All",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = TitaniumSilver,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                  )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                  Text("The Rambler", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TitaniumWhite)
+                  Text("Voice & Notes", fontSize = 10.sp, color = TextSecondary)
                 }
               }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Currently Selected Exercise Bar
+            // Quick Set Logger Button
             Surface(
-              onClick = { isExerciseSearchOpen = true },
+              onClick = { showSetLoggerDialog = true },
               shape = RoundedCornerShape(12.dp),
               color = CardDark,
               border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
-              modifier = Modifier.fillMaxWidth()
+              modifier = Modifier
+                .weight(1f)
+                .testTag("open_set_logger_button")
             ) {
               Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-              ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  MinimalDumbbellIcon(size = 20.dp, tint = TitaniumWhite, accentTint = PlatinumSteel)
-                  Spacer(modifier = Modifier.width(10.dp))
-                  Text(
-                    text = selectedExerciseName,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TitaniumWhite
-                  )
-                }
-
-                Text(
-                  text = "Tap to change",
-                  fontSize = 11.sp,
-                  color = TextSecondary
-                )
-              }
-            }
-
-            // Quick Split-Specific Exercise Chips
-            if (splitExercises.isNotEmpty()) {
-              Spacer(modifier = Modifier.height(10.dp))
-              Row(
-                modifier = Modifier
-                  .fillMaxWidth()
-                  .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-              ) {
-                splitExercises.forEach { exName ->
-                  val isSelected = selectedExerciseName.equals(exName, ignoreCase = true)
-                  Surface(
-                    onClick = {
-                      selectedExerciseName = exName
-                      val tgt = viewModel.getTargetForExercise(exName, currentActiveSplit)
-                      if (tgt.lastWeightKg > 0) {
-                        selectedWeightKg = tgt.lastWeightKg
-                        selectedReps = tgt.lastReps.coerceAtLeast(1)
-                      }
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isSelected) TitaniumWhite else CardElevated,
-                    border = androidx.compose.foundation.BorderStroke(
-                      1.dp,
-                      if (isSelected) TitaniumWhite else BorderHighlight
-                    )
-                  ) {
-                    Text(
-                      text = exName,
-                      fontSize = 11.sp,
-                      fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                      color = if (isSelected) MatteBlack else TitaniumSilver,
-                      modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                  }
-                }
-              }
-            }
-
-            // Real-Time Overload Target for the currently selected exercise
-            val currentExerciseTarget = remember(selectedExerciseName, currentActiveSplit, workouts) {
-              viewModel.getTargetForExercise(selectedExerciseName, currentActiveSplit)
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            Surface(
-              shape = RoundedCornerShape(10.dp),
-              color = Color(0xFF14171E),
-              border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
-              modifier = Modifier.fillMaxWidth()
-            ) {
-              Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-              ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Icon(
-                    Icons.Default.Bolt,
-                    contentDescription = null,
-                    tint = TitaniumWhite,
-                    modifier = Modifier.size(16.dp)
-                  )
-                  Spacer(modifier = Modifier.width(6.dp))
-                  Column {
-                    Text(
-                      text = "TARGET PROGRESSION",
-                      fontSize = 9.sp,
-                      fontWeight = FontWeight.Bold,
-                      letterSpacing = 1.sp,
-                      color = TitaniumSilver
-                    )
-                    Text(
-                      text = currentExerciseTarget.targetRepsProgression,
-                      fontSize = 12.sp,
-                      fontWeight = FontWeight.SemiBold,
-                      color = TitaniumWhite
-                    )
-                  }
-                }
-
-                if (currentExerciseTarget.lastWeightKg > 0) {
-                  Surface(
-                    onClick = {
-                      selectedWeightKg = currentExerciseTarget.lastWeightKg
-                      selectedReps = currentExerciseTarget.lastReps.coerceAtLeast(1)
-                    },
-                    shape = RoundedCornerShape(6.dp),
-                    color = CardElevated,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle)
-                  ) {
-                    Text(
-                      text = "Match Last",
-                      fontSize = 10.sp,
-                      fontWeight = FontWeight.Bold,
-                      color = TitaniumSilver,
-                      modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                  }
-                }
-              }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Weight Controls Row
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Column(
-                modifier = Modifier
-                  .clip(RoundedCornerShape(8.dp))
-                  .clickable { showDirectWeightDialog = true }
-                  .padding(4.dp)
-              ) {
-                Text(
-                  text = if (useLbs) "WEIGHT (LBS)" else "WEIGHT (KG)",
-                  fontSize = 11.sp,
-                  fontWeight = FontWeight.SemiBold,
-                  letterSpacing = 1.sp,
-                  color = TextSecondary
-                )
-                val displayWeight = if (useLbs) (selectedWeightKg * 2.20462).toInt() else selectedWeightKg.toInt()
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Text(
-                    text = "$displayWeight ${if (useLbs) "lbs" else "kg"}",
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Black,
-                    color = TitaniumWhite
-                  )
-                  Spacer(modifier = Modifier.width(6.dp))
-                  Icon(
-                    Icons.Default.Edit,
-                    contentDescription = "Edit weight",
-                    tint = PlatinumSteel,
-                    modifier = Modifier.size(14.dp)
-                  )
-                }
-              }
-
-              // Quick weight adjustment buttons
-              Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(-5.0, -2.5, 2.5, 5.0).forEach { delta ->
-                  val label = if (delta > 0) "+${delta.toInt()}" else "${delta.toInt()}"
-                  Surface(
-                    onClick = {
-                      selectedWeightKg = (selectedWeightKg + delta).coerceAtLeast(0.0)
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                    color = CardElevated,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
-                    modifier = Modifier.testTag("weight_btn_$label")
-                  ) {
-                    Text(
-                      text = label,
-                      fontSize = 12.sp,
-                      fontWeight = FontWeight.Bold,
-                      color = TextPrimary,
-                      modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
-                    )
-                  }
-                }
-              }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Rep Wheel Picker with Fractional Failure Toggle
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Text(
-                text = "REPETITIONS",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.sp,
-                color = TextSecondary
-              )
-
-              // Exact Granular Failure Point Toggle (+0.5 Rep)
-              Surface(
-                onClick = { hasFractionalRep = !hasFractionalRep },
-                shape = RoundedCornerShape(8.dp),
-                color = if (hasFractionalRep) Color(0xFF05DF72).copy(alpha = 0.15f) else CardElevated,
-                border = androidx.compose.foundation.BorderStroke(
-                  1.dp,
-                  if (hasFractionalRep) Color(0xFF05DF72) else BorderSubtle
-                ),
-                modifier = Modifier.testTag("toggle_fractional_rep_btn")
-              ) {
-                Row(
-                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Icon(
-                    Icons.Default.Bolt,
-                    contentDescription = null,
-                    tint = if (hasFractionalRep) Color(0xFF05DF72) else TitaniumSilver,
-                    modifier = Modifier.size(13.dp)
-                  )
-                  Spacer(modifier = Modifier.width(4.dp))
-                  Text(
-                    text = if (hasFractionalRep) "+0.5 Rep (Failure Point: ACTIVE)" else "+0.5 Rep (Exact Failure)",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (hasFractionalRep) Color(0xFF05DF72) else TitaniumSilver
-                  )
-                }
-              }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-            RepWheelPicker(
-              reps = selectedReps,
-              onRepsChange = { selectedReps = it },
-              modifier = Modifier.fillMaxWidth().testTag("rep_wheel_picker")
-            )
-
-            // If fractional failure is toggled, allow specifying exact sticking point
-            AnimatedVisibility(visible = hasFractionalRep) {
-              Column(modifier = Modifier.padding(top = 8.dp)) {
-                Text(
-                  text = "CONCENTRIC FAILURE STICKING POINT:",
-                  fontSize = 10.sp,
-                  fontWeight = FontWeight.Bold,
-                  letterSpacing = 0.5.sp,
-                  color = Color(0xFF05DF72)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                FlowRow(
-                  horizontalArrangement = Arrangement.spacedBy(6.dp),
-                  verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                  listOf("Mid-concentric sticking point", "Failed at lockout", "Bottom 1-inch stretch", "Form breakdown failure").forEach { pt ->
-                    val isChosen = selectedFailurePoint == pt
-                    Surface(
-                      onClick = { selectedFailurePoint = if (isChosen) "" else pt },
-                      shape = RoundedCornerShape(6.dp),
-                      color = if (isChosen) Color(0xFF05DF72) else CardElevated,
-                      border = androidx.compose.foundation.BorderStroke(0.5.dp, if (isChosen) Color(0xFF05DF72) else BorderSubtle)
-                    ) {
-                      Text(
-                        text = pt,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (isChosen) MatteBlack else TextPrimary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                      )
-                    }
-                  }
-                }
-              }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // UNILATERAL MODE (Independent Limbs)
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                  text = "UNILATERAL / LIMB SPLIT",
-                  fontSize = 11.sp,
-                  fontWeight = FontWeight.SemiBold,
-                  letterSpacing = 1.sp,
-                  color = TextSecondary
-                )
-              }
-
-              Surface(
-                onClick = { isUnilateralMode = !isUnilateralMode },
-                shape = RoundedCornerShape(8.dp),
-                color = if (isUnilateralMode) TitaniumWhite else CardElevated,
-                border = androidx.compose.foundation.BorderStroke(
-                  1.dp,
-                  if (isUnilateralMode) TitaniumWhite else BorderSubtle
-                ),
-                modifier = Modifier.testTag("toggle_unilateral_btn")
-              ) {
-                Text(
-                  text = if (isUnilateralMode) "UNILATERAL ON" else "BILATERAL",
-                  fontSize = 10.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = if (isUnilateralMode) MatteBlack else TitaniumSilver,
-                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-              }
-            }
-
-            if (isUnilateralMode) {
-              Spacer(modifier = Modifier.height(8.dp))
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-              ) {
-                listOf("BOTH" to "Both Limbs", "LEFT" to "Left Limb (L)", "RIGHT" to "Right Limb (R)").forEach { (sideKey, sideLabel) ->
-                  val isSideSelected = selectedSide == sideKey
-                  Surface(
-                    onClick = { selectedSide = sideKey },
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isSideSelected) CardElevated else CardDark,
-                    border = androidx.compose.foundation.BorderStroke(
-                      1.dp,
-                      if (isSideSelected) TitaniumWhite else BorderSubtle
-                    ),
-                    modifier = Modifier.weight(1f)
-                  ) {
-                    Box(
-                      modifier = Modifier.padding(vertical = 8.dp),
-                      contentAlignment = Alignment.Center
-                    ) {
-                      Text(
-                        text = sideLabel,
-                        fontSize = 10.sp,
-                        fontWeight = if (isSideSelected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isSideSelected) TitaniumWhite else TextSecondary
-                      )
-                    }
-                  }
-                }
-              }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // BIOFEEDBACK & LIMITING FACTORS
-            Text(
-              text = "BIOFEEDBACK & LIMITING FACTORS",
-              fontSize = 11.sp,
-              fontWeight = FontWeight.SemiBold,
-              letterSpacing = 1.sp,
-              color = TextSecondary
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            FlowRow(
-              horizontalArrangement = Arrangement.spacedBy(6.dp),
-              verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-              listOf(
-                "Grip Fatigue",
-                "Form Breakdown",
-                "Asymmetry",
-                "Peak Burn",
-                "Joint Discomfort",
-                "Cardio Gassed"
-              ).forEach { tag ->
-                val isTagActive = selectedBiofeedbackTags.contains(tag)
-                Surface(
-                  onClick = {
-                    selectedBiofeedbackTags = if (isTagActive) {
-                      selectedBiofeedbackTags - tag
-                    } else {
-                      selectedBiofeedbackTags + tag
-                    }
-                  },
-                  shape = RoundedCornerShape(8.dp),
-                  color = if (isTagActive) Color(0xFFD48B54).copy(alpha = 0.2f) else CardElevated,
-                  border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (isTagActive) Color(0xFFD48B54) else BorderSubtle
-                  ),
-                  modifier = Modifier.testTag("biofeedback_chip_$tag")
-                ) {
-                  Text(
-                    text = tag,
-                    fontSize = 11.sp,
-                    fontWeight = if (isTagActive) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isTagActive) Color(0xFFE5A97C) else TextSecondary,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                  )
-                }
-              }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // MID-SET ADJUSTMENT & TEMPO (Expandable)
-            Surface(
-              onClick = { isDropSetExpanded = !isDropSetExpanded },
-              shape = RoundedCornerShape(10.dp),
-              color = CardElevated,
-              border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
-              modifier = Modifier.fillMaxWidth()
-            ) {
-              Row(
-                modifier = Modifier
-                  .fillMaxWidth()
-                  .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
               ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Icon(
-                    Icons.Default.FitnessCenter,
-                    contentDescription = null,
-                    tint = if (isDropSetExpanded) TitaniumWhite else TextSecondary,
-                    modifier = Modifier.size(15.dp)
-                  )
-                  Spacer(modifier = Modifier.width(8.dp))
-                  Text(
-                    text = if (isDropSetExpanded) "MID-SET ADJUSTMENT & TEMPO" else "+ Mid-Set Drop Set & Tempo",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isDropSetExpanded) TitaniumWhite else TextSecondary
-                  )
-                }
-                Icon(
-                  if (isDropSetExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                  contentDescription = null,
-                  tint = TextSecondary,
-                  modifier = Modifier.size(18.dp)
-                )
-              }
-            }
-
-            AnimatedVisibility(visible = isDropSetExpanded) {
-              Column(
-                modifier = Modifier
-                  .fillMaxWidth()
-                  .padding(top = 10.dp)
-                  .background(CardDark, RoundedCornerShape(10.dp))
-                  .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
-                  .padding(12.dp)
-              ) {
-                Text(
-                  text = "MID-SET DROP WEIGHT & REPS",
-                  fontSize = 10.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = TextSecondary,
-                  letterSpacing = 0.5.sp
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Row(
-                  modifier = Modifier.fillMaxWidth(),
-                  horizontalArrangement = Arrangement.SpaceBetween,
-                  verticalAlignment = Alignment.CenterVertically
+                Box(
+                  modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(SurfaceDark),
+                  contentAlignment = Alignment.Center
                 ) {
-                  val dropDisplay = if (useLbs) (dropWeightKg * 2.20462).toInt() else dropWeightKg.toInt()
-                  Text(
-                    text = "Drop Wt: $dropDisplay ${if (useLbs) "lbs" else "kg"}",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TitaniumWhite
+                  MinimalDumbbellIcon(
+                    tint = TitaniumWhite,
+                    modifier = Modifier.size(18.dp)
                   )
-                  Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf(5.0, 10.0, 15.0, 20.0).forEach { wt ->
-                      val label = if (useLbs) "${(wt * 2.20462).toInt()}lb" else "${wt.toInt()}kg"
-                      Surface(
-                        onClick = { dropWeightKg = wt },
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (dropWeightKg == wt) TitaniumWhite else CardElevated,
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle)
-                      ) {
-                        Text(
-                          text = label,
-                          fontSize = 10.sp,
-                          fontWeight = FontWeight.Bold,
-                          color = if (dropWeightKg == wt) MatteBlack else TextSecondary,
-                          modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                        )
-                      }
-                    }
-                  }
                 }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                  text = "TEMPO / MIND-MUSCLE CUE",
-                  fontSize = 10.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = TextSecondary,
-                  letterSpacing = 0.5.sp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                FlowRow(
-                  horizontalArrangement = Arrangement.spacedBy(6.dp),
-                  verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                  listOf(
-                    "Controlled Negative (3s)",
-                    "Paused Reps",
-                    "Explosive Concentric",
-                    "Peak Squeeze (2s)"
-                  ).forEach { t ->
-                    val isSelected = selectedTempo == t
-                    Surface(
-                      onClick = { selectedTempo = if (isSelected) "" else t },
-                      shape = RoundedCornerShape(6.dp),
-                      color = if (isSelected) TitaniumWhite else CardElevated,
-                      border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle)
-                    ) {
-                      Text(
-                        text = t,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (isSelected) MatteBlack else TextSecondary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                      )
-                    }
-                  }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                  Text("Log Set", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TitaniumWhite)
+                  Text("Pick & Record", fontSize = 10.sp, color = TextSecondary)
                 }
-              }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Log Set Button
-            val effectiveReps = selectedReps.toDouble() + (if (hasFractionalRep) 0.5 else 0.0)
-            val repsLabel = if (hasFractionalRep) "$effectiveReps" else "$selectedReps"
-            val displayWeight = if (useLbs) (selectedWeightKg * 2.20462).toInt() else selectedWeightKg.toInt()
-
-            Button(
-              onClick = {
-                viewModel.addSetToActiveSession(
-                  exerciseName = selectedExerciseName,
-                  weightKg = selectedWeightKg,
-                  reps = effectiveReps,
-                  setKind = if (isDropSetExpanded && dropWeightKg > 0.0) "DROP" else if (hasFractionalRep) "FAILURE" else "NORMAL",
-                  side = if (isUnilateralMode) selectedSide else "BOTH",
-                  biofeedbackTags = selectedBiofeedbackTags.toList(),
-                  tempo = selectedTempo,
-                  failurePoint = if (hasFractionalRep && selectedFailurePoint.isBlank()) "Failed at $repsLabel reps" else selectedFailurePoint,
-                  dropWeightKg = if (isDropSetExpanded) dropWeightKg else 0.0,
-                  dropReps = if (isDropSetExpanded) dropReps else 0.0,
-                  isUnilateral = isUnilateralMode
-                )
-                if (dashboardPrefs.showRestTimer) {
-                  viewModel.startRestTimer()
-                }
-              },
-              colors = ButtonDefaults.buttonColors(
-                containerColor = TitaniumWhite,
-                contentColor = MatteBlack
-              ),
-              shape = RoundedCornerShape(12.dp),
-              modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-                .testTag("log_set_button")
-            ) {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                  text = "LOG SET ($displayWeight ${if (useLbs) "lbs" else "kg"} × $repsLabel reps${if (isUnilateralMode && selectedSide != "BOTH") " • $selectedSide" else ""})",
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 13.sp,
-                  letterSpacing = 0.5.sp
-                )
               }
             }
           }
         }
-      } else {
-        // ---------------------------------------------------------
-        // METHOD 2: THE RAMBLER (ISOLATED INPUT FOR ZERO GLITCHING)
-        // ---------------------------------------------------------
-        RamblerInputCard(
-          isOnline = isOnline,
-          isParsingRant = isParsingRant,
-          onParseRant = { text ->
-            viewModel.parseGymRant(text)
-          }
-        )
       }
     }
 
@@ -1857,22 +1137,42 @@ fun WorkoutScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            Button(
-              onClick = {
-                val workoutName = customTodaySplit ?: probableSplit
-                viewModel.saveActiveSession(workoutName)
-              },
-              colors = ButtonDefaults.buttonColors(
-                containerColor = TitaniumWhite,
-                contentColor = MatteBlack
-              ),
-              shape = RoundedCornerShape(12.dp),
-              modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .testTag("finish_active_session_button")
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-              Text("COMPLETE & SAVE WORKOUT", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+              OutlinedButton(
+                onClick = { showSetLoggerDialog = true },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TitaniumWhite),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                  .weight(1f)
+                  .height(48.dp)
+                  .testTag("active_session_add_set_button")
+              ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Add Set", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+              }
+
+              Button(
+                onClick = {
+                  val workoutName = customTodaySplit ?: probableSplit
+                  viewModel.saveActiveSession(workoutName)
+                },
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = TitaniumWhite,
+                  contentColor = MatteBlack
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                  .weight(1.4f)
+                  .height(48.dp)
+                  .testTag("finish_active_session_button")
+              ) {
+                Text("SAVE WORKOUT", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+              }
             }
           }
         }
@@ -2371,6 +1671,7 @@ private fun MultiWorkoutRamblerDialog(
   rants: List<ParsedWorkoutRant>,
   clarifications: List<com.example.viewmodel.RamblerClarification>,
   useLbs: Boolean,
+  onToggleUnits: () -> Unit = {},
   onUpdateClarification: (Int, Double, Int) -> Unit,
   onUpdateRant: (Int, ParsedWorkoutRant) -> Unit,
   onRemoveRant: (Int) -> Unit,
@@ -2413,8 +1714,31 @@ private fun MultiWorkoutRamblerDialog(
             )
           }
 
-          IconButton(onClick = onDismiss, modifier = Modifier.size(26.dp)) {
-            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = Color(0xFF262A35),
+              border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+              modifier = Modifier.clickable { onToggleUnits() }
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = if (useLbs) "LBS" else "KG",
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = TitaniumWhite
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Icon(Icons.Default.Refresh, contentDescription = "Toggle Unit", tint = PlatinumSteel, modifier = Modifier.size(12.dp))
+              }
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            IconButton(onClick = onDismiss, modifier = Modifier.size(26.dp)) {
+              Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+            }
           }
         }
 
@@ -2436,32 +1760,52 @@ private fun MultiWorkoutRamblerDialog(
               }
               Spacer(modifier = Modifier.height(6.dp))
               clarifications.forEach { cl ->
-                var inputVal by remember(cl.exerciseIndex, cl.question) {
-                  mutableStateOf(if (cl.initialWeightKg > 0) cl.initialWeightKg.toString() else "20.0")
+                var inputVal by remember(cl.exerciseIndex, cl.question, useLbs) {
+                  val initNum = if (useLbs) (cl.initialWeightKg * 2.20462).toInt() else cl.initialWeightKg.toInt()
+                  mutableStateOf(if (initNum > 0) initNum.toString() else (if (useLbs) "45" else "20"))
                 }
                 Text(cl.question, fontSize = 11.sp, color = TextSecondary)
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
                   OutlinedTextField(
                     value = inputVal,
                     onValueChange = { inputVal = it },
                     singleLine = true,
+                    trailingIcon = {
+                      Text(
+                        text = if (useLbs) "lbs" else "kg",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(end = 8.dp)
+                      )
+                    },
                     colors = OutlinedTextFieldDefaults.colors(
                       focusedContainerColor = CardDark,
                       unfocusedContainerColor = CardDark,
                       focusedTextColor = TextPrimary,
-                      unfocusedTextColor = TextPrimary
+                      unfocusedTextColor = TextPrimary,
+                      focusedBorderColor = TitaniumWhite,
+                      unfocusedBorderColor = BorderHighlight
                     ),
-                    modifier = Modifier.width(100.dp).height(48.dp)
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                      .weight(1f)
+                      .height(52.dp)
                   )
                   Spacer(modifier = Modifier.width(8.dp))
                   Button(
                     onClick = {
-                      val wt = inputVal.toDoubleOrNull() ?: 20.0
-                      onUpdateClarification(cl.exerciseIndex, wt, cl.initialReps)
+                      val entered = inputVal.toDoubleOrNull() ?: (if (useLbs) 45.0 else 20.0)
+                      val wtKg = if (useLbs) (entered / 2.20462) else entered
+                      onUpdateClarification(cl.exerciseIndex, wtKg, cl.initialReps)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = TitaniumWhite, contentColor = MatteBlack),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.height(52.dp)
                   ) {
                     Text("Apply", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                   }
@@ -2628,13 +1972,21 @@ private fun WorkoutRantReviewItem(
 
       Spacer(modifier = Modifier.height(8.dp))
 
+      Text(
+        text = "WORKOUT NAME",
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        color = PlatinumSteel
+      )
+      Spacer(modifier = Modifier.height(4.dp))
       OutlinedTextField(
         value = titleText,
         onValueChange = {
           titleText = it
           onTitleChange(it)
         },
-        label = { Text("Workout Name", fontSize = 10.sp, color = TextSecondary) },
+        placeholder = { Text("e.g. Push Hypertrophy A", color = TextSecondary, fontSize = 12.sp) },
         singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
           focusedContainerColor = SurfaceDark,
@@ -2644,8 +1996,10 @@ private fun WorkoutRantReviewItem(
           focusedTextColor = TextPrimary,
           unfocusedTextColor = TextPrimary
         ),
-        shape = RoundedCornerShape(8.dp),
-        modifier = Modifier.fillMaxWidth().height(52.dp)
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(52.dp)
       )
 
       Spacer(modifier = Modifier.height(8.dp))
@@ -2693,7 +2047,8 @@ private fun WorkoutRantReviewItem(
 private fun RamblerInputCard(
   isOnline: Boolean,
   isParsingRant: Boolean,
-  onParseRant: (String) -> Unit
+  onParseRant: (String) -> Unit,
+  onDismiss: (() -> Unit)? = null
 ) {
   var ramblerText by rememberSaveable { mutableStateOf("") }
 
@@ -2737,6 +2092,12 @@ private fun RamblerInputCard(
             fontWeight = FontWeight.SemiBold,
             color = TextSecondary
           )
+          if (onDismiss != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+              Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary, modifier = Modifier.size(16.dp))
+            }
+          }
         }
       }
 
@@ -2793,6 +2154,330 @@ private fun RamblerInputCard(
           Text("Analyzing workout notes...", fontWeight = FontWeight.Bold)
         } else {
           Text("PARSE & SYNC WORKOUT", fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun QuickSetLoggerDialog(
+  allAvailableExercises: List<com.example.model.ExerciseDefinition>,
+  splitExercises: List<String>,
+  selectedExerciseName: String,
+  onSelectExercise: (String) -> Unit,
+  selectedWeightKg: Double,
+  onWeightChange: (Double) -> Unit,
+  selectedReps: Int,
+  onRepsChange: (Int) -> Unit,
+  hasFractionalRep: Boolean,
+  onFractionalRepChange: (Boolean) -> Unit,
+  isUnilateralMode: Boolean,
+  onUnilateralModeChange: (Boolean) -> Unit,
+  selectedSide: String,
+  onSideChange: (String) -> Unit,
+  selectedBiofeedbackTags: Set<String>,
+  onToggleBiofeedbackTag: (String) -> Unit,
+  selectedTempo: String,
+  onTempoChange: (String) -> Unit,
+  selectedFailurePoint: String,
+  onFailurePointChange: (String) -> Unit,
+  useLbs: Boolean,
+  onOpenDirectWeightDialog: () -> Unit,
+  onOpenExerciseSearch: () -> Unit,
+  onOpenAddCustomExercise: () -> Unit,
+  currentExerciseTarget: OverloadTarget,
+  onMatchLastTarget: (Double, Int) -> Unit,
+  onLogSet: () -> Unit,
+  onDismiss: () -> Unit
+) {
+  androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    Card(
+      shape = RoundedCornerShape(20.dp),
+      colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+      border = androidx.compose.foundation.BorderStroke(1.5.dp, BorderHighlight),
+      modifier = Modifier
+        .fillMaxWidth()
+        .wrapContentHeight()
+        .testTag("quick_set_logger_dialog")
+    ) {
+      Column(
+        modifier = Modifier
+          .padding(18.dp)
+          .verticalScroll(rememberScrollState())
+      ) {
+        // Dialog Header
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Column {
+            Text(
+              text = "LOG NEW SET",
+              fontSize = 11.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.2.sp,
+              color = PlatinumSteel
+            )
+            Text(
+              text = selectedExerciseName,
+              fontSize = 16.sp,
+              fontWeight = FontWeight.Bold,
+              color = TitaniumWhite
+            )
+          }
+
+          IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary, modifier = Modifier.size(18.dp))
+          }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Exercise Picker Strip
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text("EXERCISE", fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = TextSecondary)
+          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Surface(
+              onClick = onOpenAddCustomExercise,
+              shape = RoundedCornerShape(6.dp),
+              color = CardElevated,
+              border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle)
+            ) {
+              Text("+ New", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TitaniumWhite, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
+            }
+            Surface(
+              onClick = onOpenExerciseSearch,
+              shape = RoundedCornerShape(6.dp),
+              color = CardElevated,
+              border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderHighlight)
+            ) {
+              Text("Browse All", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TitaniumSilver, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Split exercise quick chips
+        if (splitExercises.isNotEmpty()) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            splitExercises.forEach { exName ->
+              val isSelected = selectedExerciseName.equals(exName, ignoreCase = true)
+              Surface(
+                onClick = { onSelectExercise(exName) },
+                shape = RoundedCornerShape(8.dp),
+                color = if (isSelected) TitaniumWhite else CardElevated,
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) TitaniumWhite else BorderHighlight)
+              ) {
+                Text(
+                  text = exName,
+                  fontSize = 11.sp,
+                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                  color = if (isSelected) MatteBlack else TitaniumSilver,
+                  modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                )
+              }
+            }
+          }
+          Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        // Target Progression Card
+        if (currentExerciseTarget.targetRepsProgression.isNotBlank()) {
+          Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFF14171E),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Row(
+              modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Bolt, contentDescription = null, tint = TitaniumWhite, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Column {
+                  Text("PROGRESSION TARGET", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TitaniumSilver)
+                  Text(currentExerciseTarget.targetRepsProgression, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TitaniumWhite)
+                }
+              }
+              if (currentExerciseTarget.lastWeightKg > 0) {
+                Surface(
+                  onClick = { onMatchLastTarget(currentExerciseTarget.lastWeightKg, currentExerciseTarget.lastReps.coerceAtLeast(1)) },
+                  shape = RoundedCornerShape(6.dp),
+                  color = CardElevated,
+                  border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderSubtle)
+                ) {
+                  Text("Match Last", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TitaniumSilver, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
+                }
+              }
+            }
+          }
+          Spacer(modifier = Modifier.height(14.dp))
+        }
+
+        // WEIGHT CONTROLS
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Column(
+            modifier = Modifier
+              .clip(RoundedCornerShape(8.dp))
+              .clickable { onOpenDirectWeightDialog() }
+              .padding(4.dp)
+          ) {
+            Text(if (useLbs) "WEIGHT (LBS)" else "WEIGHT (KG)", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+            val displayWeight = if (useLbs) (selectedWeightKg * 2.20462).toInt() else selectedWeightKg.toInt()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Text("$displayWeight ${if (useLbs) "lbs" else "kg"}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = TitaniumWhite)
+              Spacer(modifier = Modifier.width(4.dp))
+              Icon(Icons.Default.Edit, contentDescription = "Edit weight", tint = PlatinumSteel, modifier = Modifier.size(12.dp))
+            }
+          }
+
+          Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf(-5.0, -2.5, 2.5, 5.0).forEach { delta ->
+              val label = if (delta > 0) "+${delta.toInt()}" else "${delta.toInt()}"
+              Surface(
+                onClick = { onWeightChange((selectedWeightKg + delta).coerceAtLeast(0.0)) },
+                shape = RoundedCornerShape(8.dp),
+                color = CardElevated,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
+              ) {
+                Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // REPS CONTROLS
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text("REPETITIONS", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+          Surface(
+            onClick = { onFractionalRepChange(!hasFractionalRep) },
+            shape = RoundedCornerShape(6.dp),
+            color = if (hasFractionalRep) Color(0xFFEF4444).copy(alpha = 0.2f) else CardElevated,
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, if (hasFractionalRep) Color(0xFFEF4444) else BorderSubtle)
+          ) {
+            Text(
+              text = if (hasFractionalRep) "+0.5 Rep (Failure Point)" else "+0.5 Rep",
+              fontSize = 10.sp,
+              fontWeight = FontWeight.Bold,
+              color = if (hasFractionalRep) Color(0xFFFCA5A5) else TextSecondary,
+              modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Quick Rep Chips (-1, +1, and standard counts)
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          IconButton(
+            onClick = { onRepsChange((selectedReps - 1).coerceAtLeast(1)) },
+            modifier = Modifier.size(36.dp).clip(CircleShape).background(CardElevated)
+          ) {
+            Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = TitaniumWhite, modifier = Modifier.size(16.dp))
+          }
+
+          Row(
+            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "$selectedReps${if (hasFractionalRep) ".5" else ""} REPS",
+              fontSize = 20.sp,
+              fontWeight = FontWeight.Black,
+              color = TitaniumWhite
+            )
+          }
+
+          IconButton(
+            onClick = { onRepsChange(selectedReps + 1) },
+            modifier = Modifier.size(36.dp).clip(CircleShape).background(CardElevated)
+          ) {
+            Icon(Icons.Default.Add, contentDescription = "Increase", tint = TitaniumWhite, modifier = Modifier.size(16.dp))
+          }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // UNILATERAL MODE TOGGLE
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text("UNILATERAL (L / R)", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+          Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf("BOTH", "LEFT", "RIGHT").forEach { side ->
+              val isSel = if (!isUnilateralMode) side == "BOTH" else (selectedSide == side && side != "BOTH")
+              Surface(
+                onClick = {
+                  if (side == "BOTH") {
+                    onUnilateralModeChange(false)
+                    onSideChange("BOTH")
+                  } else {
+                    onUnilateralModeChange(true)
+                    onSideChange(side)
+                  }
+                },
+                shape = RoundedCornerShape(6.dp),
+                color = if (isSel) TitaniumWhite else CardElevated,
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) TitaniumWhite else BorderSubtle)
+              ) {
+                Text(side, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (isSel) MatteBlack else TextSecondary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // LOG SET BUTTON
+        val displayWeight = if (useLbs) (selectedWeightKg * 2.20462).toInt() else selectedWeightKg.toInt()
+        val repsLabel = "$selectedReps${if (hasFractionalRep) ".5" else ""}"
+        Button(
+          onClick = onLogSet,
+          colors = ButtonDefaults.buttonColors(containerColor = TitaniumWhite, contentColor = MatteBlack),
+          shape = RoundedCornerShape(12.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .testTag("submit_log_set_button")
+        ) {
+          Text(
+            text = "LOG SET ($displayWeight ${if (useLbs) "lbs" else "kg"} × $repsLabel reps)",
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            letterSpacing = 0.5.sp
+          )
         }
       }
     }
