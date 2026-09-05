@@ -46,16 +46,31 @@ jobs:
       - name: Build Debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
+      - name: Extract Version
+        id: get_version
+        run: |
+          VERSION_NAME=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | cut -d'"' -f2)
+          echo "version=v${VERSION_NAME}" >> $GITHUB_OUTPUT
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: JIIM-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Attach APK to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+      - name: Automatically Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: JIIM ${{ steps.get_version.outputs.version }} • Update
+          body: |
+            ### JIIM Automated Release
+            - Built directly from source
+            - Jim AI Strength & Biomechanics Coach (Gemini)
+            - Minimalist high-contrast MacroFactor design
+            - Custom dumbbell logo and improved workout logger
+          draft: false
+          prerelease: false
           files: app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
