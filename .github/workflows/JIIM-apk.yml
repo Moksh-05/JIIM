@@ -67,6 +67,7 @@ jobs:
             - Custom dumbbell logo and improved workout logger
           draft: false
           prerelease: false
+          make_latest: true
           files: app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
