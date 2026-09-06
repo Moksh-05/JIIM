@@ -13,42 +13,39 @@ object OfflineRantParser {
     "bench" to "Barbell Bench Press",
     "bench press" to "Barbell Bench Press",
     "flat bench" to "Barbell Bench Press",
+    "flat bench chest press" to "Barbell Bench Press",
     "barbell bench" to "Barbell Bench Press",
+    "chest press" to "Machine Chest Press",
+    "chest press machine" to "Machine Chest Press",
+    "machine chest press" to "Machine Chest Press",
     "incline db" to "Incline Dumbbell Press",
+    "incline db press" to "Incline Dumbbell Press",
+    "incline db / bench press" to "Incline Dumbbell Press",
     "incline dumbbell" to "Incline Dumbbell Press",
     "incline dumbbell press" to "Incline Dumbbell Press",
-    "incline bench" to "Incline Dumbbell Press",
+    "incline bench" to "Incline Barbell Bench Press",
+    "incline bench press" to "Incline Barbell Bench Press",
     "cable fly" to "Cable Chest Fly",
     "chest fly" to "Cable Chest Fly",
+    "db butterfly" to "Dumbbell Flyes",
+    "butterfly" to "Dumbbell Flyes",
+    "db flys" to "Dumbbell Flyes",
+    "db flyes" to "Dumbbell Flyes",
+    "dumbbell flyes" to "Dumbbell Flyes",
     "dips" to "Dips",
     "pushups" to "Push Ups",
     "push ups" to "Push Ups",
-    "squat" to "Barbell Back Squat",
-    "squats" to "Barbell Back Squat",
-    "back squat" to "Barbell Back Squat",
-    "barbell squat" to "Barbell Back Squat",
-    "leg press" to "Leg Press",
-    "leg extension" to "Leg Extension",
-    "leg extensions" to "Leg Extension",
-    "leg curl" to "Hamstring Leg Curl",
-    "hamstring curl" to "Hamstring Leg Curl",
+    "push-ups" to "Push Ups",
+    "pike pushups" to "Pike Push-Ups",
+    "pike push-ups" to "Pike Push-Ups",
+
+    // Back & Traps
+    "deadlift" to "Barbell Deadlift",
+    "deadlifts" to "Barbell Deadlift",
     "rdl" to "Romanian Deadlift",
     "rdls" to "Romanian Deadlift",
     "romanian deadlift" to "Romanian Deadlift",
-    "deadlift" to "Barbell Deadlift",
-    "deadlifts" to "Barbell Deadlift",
-    "calves" to "Standing Calf Raise",
-    "calf raise" to "Standing Calf Raise",
-    "calf raises" to "Standing Calf Raise",
-    "ohp" to "Overhead Barbell Press",
-    "overhead press" to "Overhead Barbell Press",
-    "shoulder press" to "Dumbbell Shoulder Press",
-    "military press" to "Overhead Barbell Press",
-    "lateral raise" to "Dumbbell Lateral Raise",
-    "lateral raises" to "Dumbbell Lateral Raise",
-    "side raises" to "Dumbbell Lateral Raise",
-    "face pulls" to "Face Pulls",
-    "facepulls" to "Face Pulls",
+    "romanian deadlifts" to "Romanian Deadlift",
     "lat pulldown" to "Lat Pulldown",
     "lat pulldowns" to "Lat Pulldown",
     "pull down" to "Lat Pulldown",
@@ -61,26 +58,137 @@ object OfflineRantParser {
     "pullups" to "Pull-Ups",
     "pull ups" to "Pull-Ups",
     "chin ups" to "Pull-Ups",
+    "back extensions" to "Back Extensions",
+    "back extension" to "Back Extensions",
+    "shrugs" to "Dumbbell Shrug",
+    "shrug" to "Dumbbell Shrug",
+    "dumbbell shrugs" to "Dumbbell Shrug",
+    "db shrugs" to "Dumbbell Shrug",
+
+    // Shoulders
+    "machine shoulder press" to "Machine Shoulder Press",
+    "shoulder press" to "Dumbbell Shoulder Press",
+    "db shoulder press" to "Dumbbell Shoulder Press",
+    "left hand db shoulder press" to "Dumbbell Shoulder Press",
+    "ohp" to "Overhead Barbell Press",
+    "overhead press" to "Overhead Barbell Press",
+    "military press" to "Overhead Barbell Press",
+    "lateral raise" to "Dumbbell Lateral Raise",
+    "lateral raises" to "Dumbbell Lateral Raise",
+    "side raises" to "Dumbbell Lateral Raise",
+    "side raise" to "Dumbbell Lateral Raise",
+    "db lateral raises" to "Dumbbell Lateral Raise",
+    "db lateral raise" to "Dumbbell Lateral Raise",
+    "lean-in lateral raises" to "Dumbbell Lateral Raise",
+    "lean in lateral raises" to "Dumbbell Lateral Raise",
+    "bilateral lateral raises" to "Dumbbell Lateral Raise",
+    "single hand lateral raises" to "Cable Lateral Raise",
+    "left hand cable lateral raises" to "Cable Lateral Raise",
+    "cable lateral raise" to "Cable Lateral Raise",
+    "cable lateral raises" to "Cable Lateral Raise",
+    "front raise" to "Front Dumbbell Raise",
+    "front raises" to "Front Dumbbell Raise",
+    "reverse db flys" to "Reverse Dumbbell Flyes",
+    "reverse db flyes" to "Reverse Dumbbell Flyes",
+    "reverse flys" to "Reverse Dumbbell Flyes",
+    "reverse flyes" to "Reverse Dumbbell Flyes",
+    "rear delt raises" to "Reverse Dumbbell Flyes",
+    "rear delt flys" to "Reverse Dumbbell Flyes",
+    "face pulls" to "Face Pulls",
+    "facepulls" to "Face Pulls",
+
+    // Arms - Biceps
     "bicep curl" to "Barbell Bicep Curl",
     "bicep curls" to "Barbell Bicep Curl",
     "curls" to "Barbell Bicep Curl",
     "barbell curl" to "Barbell Bicep Curl",
-    "hammer curl" to "Hammer Curl",
-    "hammer curls" to "Hammer Curl",
+    "db bicep curl" to "Dumbbell Bicep Curl",
+    "db bicep curls" to "Dumbbell Bicep Curl",
+    "regular bicep curls" to "Dumbbell Bicep Curl",
+    "regular bicep curl" to "Dumbbell Bicep Curl",
+    "seated unilateral bicep curls" to "Seated Dumbbell Curl",
+    "seated bicep curl" to "Seated Dumbbell Curl",
     "incline curl" to "Incline Dumbbell Curl",
     "incline curls" to "Incline Dumbbell Curl",
+    "incline db curls" to "Incline Dumbbell Curl",
+    "incline db curl" to "Incline Dumbbell Curl",
+    "db bench curl" to "Incline Dumbbell Curl",
+    "hammer curl" to "Hammer Curl",
+    "hammer curls" to "Hammer Curl",
+    "db hammer curl" to "Hammer Curl",
+    "db hammer curls" to "Hammer Curl",
+    "cable hammer curls" to "Cable Hammer Curl",
+    "cable hammer curl" to "Cable Hammer Curl",
+    "zottman curl" to "Zottman Curl",
+    "zottman curls" to "Zottman Curl",
+    "preacher curl machine" to "Machine Preacher Curl",
+    "preacher curl" to "Machine Preacher Curl",
+
+    // Arms - Triceps
     "tricep pushdown" to "Tricep Rope Pushdown",
     "tricep pushdowns" to "Tricep Rope Pushdown",
     "pushdown" to "Tricep Rope Pushdown",
     "pushdowns" to "Tricep Rope Pushdown",
     "rope pushdown" to "Tricep Rope Pushdown",
+    "one hand cable pushdown" to "Single Arm Cable Tricep Pushdown",
+    "cable pushdown" to "Tricep Rope Pushdown",
+    "db tricep extensions" to "Dumbbell Tricep Extension",
+    "db tricep extension" to "Dumbbell Tricep Extension",
+    "overhead tricep extension" to "Cable Overhead Tricep Extension",
+    "tricep extension machine" to "Machine Tricep Extension",
+    "tricep extension" to "Machine Tricep Extension",
+    "tricep extensions" to "Machine Tricep Extension",
     "skull crushers" to "Skull Crushers",
     "skullcrushers" to "Skull Crushers",
+
+    // Legs
+    "squat" to "Barbell Back Squat",
+    "squats" to "Barbell Back Squat",
+    "back squat" to "Barbell Back Squat",
+    "barbell squat" to "Barbell Back Squat",
+    "jump squats" to "Bodyweight Squats",
+    "leg press" to "Leg Press",
+    "leg extension" to "Leg Extension",
+    "leg extensions" to "Leg Extension",
+    "leg curl" to "Hamstring Leg Curl",
+    "hamstring curl" to "Hamstring Leg Curl",
+    "calves" to "Standing Calf Raise",
+    "calf raise" to "Standing Calf Raise",
+    "calf raises" to "Standing Calf Raise",
+
+    // Core
     "hanging leg raise" to "Hanging Leg Raise",
     "leg raises" to "Hanging Leg Raise",
     "plank" to "Plank",
-    "woodchoppers" to "Cable Woodchoppers"
+    "woodchoppers" to "Cable Woodchoppers",
+    "upper ab crunches" to "Ab Crunches",
+    "weighted upper ab crunches" to "Ab Crunches",
+    "reverse ab crunches" to "Reverse Crunches",
+    "bench reverse crunches" to "Reverse Crunches",
+    "crunches" to "Ab Crunches",
+    "ab crunches" to "Ab Crunches"
   )
+
+  fun resolveCanonicalExerciseName(rawName: String): String {
+    val trimmed = rawName.trim().removePrefix("-").removePrefix("*").removePrefix("•").trim()
+    if (trimmed.isBlank()) return "General Exercise"
+    val directMatch = ExerciseLibrary.allExercises.find { it.name.equals(trimmed, ignoreCase = true) }
+    if (directMatch != null) return directMatch.name
+
+    val lower = trimmed.lowercase(Locale.ROOT)
+    val aliasMatch = exerciseAliases[lower]
+    if (aliasMatch != null) return aliasMatch
+
+    for ((alias, canonical) in exerciseAliases.entries.sortedByDescending { it.key.length }) {
+      if (lower.contains(alias)) {
+        return canonical
+      }
+    }
+
+    return trimmed.split(" ").joinToString(" ") { word ->
+      word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+    }
+  }
 
   fun parseRant(text: String): ParsedWorkoutRant {
     val results = parseMultiWorkoutRant(text)
@@ -141,7 +249,15 @@ object OfflineRantParser {
       blocks.add(currentBlock.toString().trim())
     }
 
-    return blocks
+    // Filter out trailing chat prompt questions or markdown dividers
+    return blocks.filter { rawBlock ->
+      val b = rawBlock.trim()
+      b.isNotBlank() &&
+        !b.startsWith("---") &&
+        !b.startsWith("Are there any specific", ignoreCase = true) &&
+        !b.startsWith("Let me know", ignoreCase = true) &&
+        !b.startsWith("Would you like", ignoreCase = true)
+    }
   }
 
   private fun parseWorkoutBlock(block: String, fallbackDayOffset: Int): ParsedWorkoutRant {
@@ -152,19 +268,34 @@ object OfflineRantParser {
     // Detect title from first line or exercises
     var detectedTitle = ""
     val firstLine = lines.firstOrNull() ?: ""
-    val cleanFirst = firstLine.trim().removePrefix("#").removePrefix("*").removePrefix("-").trim()
+    val cleanFirst = firstLine.trim().trimStart('#', '*', '-', '•', '>', ' ')
     val lowerFull = clean.lowercase(Locale.ROOT)
 
-    // 1. If first line is a title without sets/numbers, use the lifter's title directly!
-    val hasSetNumbersInFirstLine = Regex("""\b\d+(?:kg|lb|lbs)?\b|\b\d+\s*[x×]\s*\d+\b""").containsMatchIn(cleanFirst)
-    if (!hasSetNumbersInFirstLine && cleanFirst.length in 3..60 && !cleanFirst.contains("yesterday", ignoreCase = true) && !cleanFirst.contains("today", ignoreCase = true)) {
-      val candidateTitle = cleanFirst
-        .removePrefix("Workout:")
-        .removePrefix("Session:")
-        .removePrefix("Day:")
-        .trim()
-      if (candidateTitle.isNotBlank()) {
-        detectedTitle = candidateTitle
+    // 1. If first line has a colon after the date (e.g. "July 28, 2026: Shoulders and Biceps")
+    val colonIdx = cleanFirst.indexOf(':')
+    if (colonIdx != -1) {
+      val afterColon = cleanFirst.substring(colonIdx + 1).trim()
+      if (afterColon.isNotBlank() && afterColon.length in 2..60 &&
+        !afterColon.contains("yesterday", ignoreCase = true) &&
+        !afterColon.contains("today", ignoreCase = true)) {
+        detectedTitle = afterColon
+      }
+    }
+
+    // 2. If first line is a title without sets/numbers, use the lifter's title directly
+    if (detectedTitle.isBlank()) {
+      val hasSetNumbersInFirstLine = Regex("""\b\d+(?:kg|lb|lbs)?\b|\b\d+\s*[x×]\s*\d+\b""").containsMatchIn(cleanFirst)
+      if (!hasSetNumbersInFirstLine && cleanFirst.length in 3..60 &&
+        !cleanFirst.contains("yesterday", ignoreCase = true) &&
+        !cleanFirst.contains("today", ignoreCase = true)) {
+        val candidateTitle = cleanFirst
+          .removePrefix("Workout:")
+          .removePrefix("Session:")
+          .removePrefix("Day:")
+          .trim()
+        if (candidateTitle.isNotBlank()) {
+          detectedTitle = candidateTitle
+        }
       }
     }
 
@@ -178,6 +309,8 @@ object OfflineRantParser {
         lowerFull.contains("chest") && lowerFull.contains("tricep") -> detectedTitle = "Chest & Triceps"
         lowerFull.contains("back") && lowerFull.contains("bicep") -> detectedTitle = "Back & Biceps"
         lowerFull.contains("bicep") && lowerFull.contains("tricep") -> detectedTitle = "Arm Day"
+        lowerFull.contains("abs") && lowerFull.contains("shoulder") -> detectedTitle = "Abs & Shoulders"
+        lowerFull.contains("shoulder") && lowerFull.contains("bicep") -> detectedTitle = "Shoulders & Biceps"
         Regex("""\barm\s+day\b""").containsMatchIn(lowerFull) -> detectedTitle = "Arms Workout"
         Regex("""\bback\s+day\b""").containsMatchIn(lowerFull) -> detectedTitle = "Back Workout"
         Regex("""\bshoulder\s+day\b""").containsMatchIn(lowerFull) -> detectedTitle = "Shoulders Workout"
@@ -198,6 +331,7 @@ object OfflineRantParser {
       clarifications.add(dateClarification)
     }
 
+    // Step 1: Parse segments that have explicit weights/sets/reps
     for (segment in segments) {
       val (matchedName, sets) = parseSegment(segment, isLbs)
       if (matchedName != null && sets.isNotEmpty()) {
@@ -210,22 +344,45 @@ object OfflineRantParser {
       }
     }
 
-    // Fallback: If no segments separated by punct, scan for known exercises across whole text
-    if (parsedExercises.isEmpty()) {
-      for ((alias, canonical) in exerciseAliases.entries.sortedByDescending { it.key.length }) {
-        val idx = lowerFull.indexOf(alias)
-        if (idx != -1) {
-          val sub = clean.substring(idx)
-          val (_, sets) = parseSegment(sub, isLbs)
-          if (sets.isNotEmpty() && parsedExercises.none { it.exerciseName == canonical }) {
-            parsedExercises.add(
-              ParsedExerciseLog(
-                exerciseName = canonical,
-                sets = sets
-              )
-            )
-          }
-        }
+    // Step 2: Comprehensive scan for all exercises mentioned in narrative text or bullet points
+    // (e.g., "You executed Zottman Curls, Lean-in Lateral Raises, Incline Curls, and Reverse DB Flys")
+    val mentionedExercisesInOrder = mutableListOf<Pair<Int, String>>()
+    val sortedAliases = exerciseAliases.entries.sortedByDescending { it.key.length }
+
+    for (ex in ExerciseLibrary.allExercises) {
+      val pattern = Regex("""\b${Regex.escape(ex.name.lowercase(Locale.ROOT))}\b""")
+      val matches = pattern.findAll(lowerFull)
+      for (m in matches) {
+        mentionedExercisesInOrder.add(Pair(m.range.first, ex.name))
+      }
+    }
+
+    for ((alias, canonical) in sortedAliases) {
+      val pattern = Regex("""\b${Regex.escape(alias)}\b""")
+      val matches = pattern.findAll(lowerFull)
+      for (m in matches) {
+        mentionedExercisesInOrder.add(Pair(m.range.first, canonical))
+      }
+    }
+
+    // Sort by order of appearance in the notes and deduplicate
+    val distinctMentions = mutableListOf<String>()
+    for ((_, canonical) in mentionedExercisesInOrder.sortedBy { it.first }) {
+      if (!distinctMentions.contains(canonical)) {
+        distinctMentions.add(canonical)
+      }
+    }
+
+    // For any mentioned exercise that doesn't have sets yet, create smart default working sets
+    for (canonical in distinctMentions) {
+      if (parsedExercises.none { it.exerciseName == canonical }) {
+        val defaultSets = createSmartDefaultSets(canonical, isLbs)
+        parsedExercises.add(
+          ParsedExerciseLog(
+            exerciseName = canonical,
+            sets = defaultSets
+          )
+        )
       }
     }
 
@@ -234,21 +391,12 @@ object OfflineRantParser {
       detectedTitle = suggestWorkoutTitle(parsedExercises)
     }
 
-    // Ensure all sets have valid reps (never 0) - deduplicate unanswerable questions
+    // Ensure all sets have valid reps (never 0)
     val sanitizedExercises = parsedExercises.map { ex ->
       val fixedSets = ex.sets.map { s ->
         if (s.reps <= 0.0) s.copy(reps = 10.0) else s
       }
       ex.copy(sets = fixedSets)
-    }
-
-    // Only ask clarification for missing weight if it's NOT a bodyweight movement
-    for (ex in sanitizedExercises) {
-      val isBodyweight = isBodyweightExercise(ex.exerciseName)
-      val missingWeight = ex.sets.any { it.weightKg <= 0.0 } && !isBodyweight
-      if (missingWeight) {
-        clarifications.add("What weight was used for ${ex.exerciseName}?")
-      }
     }
 
     if (sanitizedExercises.isEmpty()) {
@@ -263,6 +411,36 @@ object OfflineRantParser {
       dateDisplay = dateDisplay,
       clarificationQuestions = clarifications,
       detectedUnit = if (isLbs) "LBS" else "KG"
+    )
+  }
+
+  fun createSmartDefaultSets(exerciseName: String, isLbs: Boolean): List<ParsedSetLog> {
+    val lower = exerciseName.lowercase(Locale.ROOT)
+    val isBodyweight = isBodyweightExercise(exerciseName)
+    val isCore = lower.contains("crunch") || lower.contains("plank") || lower.contains("leg raise") || lower.contains("woodchopper")
+    val isHeavyCompound = (lower.contains("squat") && !lower.contains("bodyweight")) ||
+      lower.contains("deadlift") || lower.contains("bench press") || lower.contains("barbell row") ||
+      lower.contains("overhead barbell") || lower.contains("leg press")
+
+    val defaultWeightKg = when {
+      isBodyweight || isCore -> 0.0
+      isHeavyCompound -> if (isLbs) (135.0 / 2.20462) else 60.0
+      lower.contains("curl") || lower.contains("lateral raise") || lower.contains("fly") -> if (isLbs) (25.0 / 2.20462) else 12.0
+      lower.contains("shoulder press") || lower.contains("incline") || lower.contains("chest press") -> if (isLbs) (45.0 / 2.20462) else 20.0
+      lower.contains("pulldown") || lower.contains("cable row") || lower.contains("pushdown") || lower.contains("extension") -> if (isLbs) (50.0 / 2.20462) else 25.0
+      else -> if (isLbs) (35.0 / 2.20462) else 15.0
+    }
+
+    val defaultReps = when {
+      isCore || lower.contains("push up") || lower.contains("push-up") -> 15.0
+      isHeavyCompound -> 8.0
+      else -> 10.0
+    }
+
+    return listOf(
+      ParsedSetLog(weightKg = defaultWeightKg, reps = defaultReps),
+      ParsedSetLog(weightKg = defaultWeightKg, reps = defaultReps),
+      ParsedSetLog(weightKg = defaultWeightKg, reps = defaultReps)
     )
   }
 

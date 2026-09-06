@@ -31,6 +31,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Description
@@ -161,6 +162,7 @@ fun WorkoutScreen(
     viewModel.getExercisesForSplit(currentActiveSplit)
   }
   var showSplitPicker by remember { mutableStateOf(false) }
+  var showGoogleSheetsDialog by remember { mutableStateOf(false) }
 
   // Logging Method State ("SET_LOGGER" vs "RAMBLER")
   val selectedLoggingMethod by viewModel.selectedLoggingMethod.collectAsState()
@@ -200,6 +202,13 @@ fun WorkoutScreen(
   val (currStreak, _) = remember(workouts) { viewModel.computeStreaks(workouts) }
 
   // DIALOGS
+  if (showGoogleSheetsDialog) {
+    com.example.ui.components.GoogleSheetsImportDialog(
+      viewModel = viewModel,
+      onDismiss = { showGoogleSheetsDialog = false }
+    )
+  }
+
   if (parsedRants.isNotEmpty()) {
     MultiWorkoutRamblerDialog(
       rants = parsedRants,
@@ -383,7 +392,11 @@ fun WorkoutScreen(
           showRamblerDialog = false
           viewModel.parseGymRant(text)
         },
-        onDismiss = { showRamblerDialog = false }
+        onDismiss = { showRamblerDialog = false },
+        onOpenGoogleSheets = {
+          showRamblerDialog = false
+          showGoogleSheetsDialog = true
+        }
       )
     }
   }
@@ -934,7 +947,7 @@ fun WorkoutScreen(
                 .testTag("open_set_logger_button")
             ) {
               Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
               ) {
                 Box(
@@ -949,10 +962,46 @@ fun WorkoutScreen(
                     modifier = Modifier.size(18.dp)
                   )
                 }
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Column {
                   Text("Log Set", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TitaniumWhite)
-                  Text("Pick & Record", fontSize = 10.sp, color = TextSecondary)
+                  Text("Pick & Log", fontSize = 10.sp, color = TextSecondary)
+                }
+              }
+            }
+
+            // Google Sheets Live Sync Button
+            Surface(
+              onClick = { showGoogleSheetsDialog = true },
+              shape = RoundedCornerShape(12.dp),
+              color = CardDark,
+              border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF34A853).copy(alpha = 0.4f)),
+              modifier = Modifier
+                .weight(1f)
+                .testTag("open_sheets_sync_button")
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF0F9D58).copy(alpha = 0.2f)),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Icon(
+                    Icons.Default.TableChart,
+                    contentDescription = null,
+                    tint = Color(0xFF34A853),
+                    modifier = Modifier.size(18.dp)
+                  )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                  Text("Sheets", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TitaniumWhite)
+                  Text("Import", fontSize = 10.sp, color = TextSecondary)
                 }
               }
             }
@@ -2080,7 +2129,8 @@ private fun RamblerInputCard(
   onSaveGeminiKey: (String) -> Unit,
   isParsingRant: Boolean,
   onParseRant: (String) -> Unit,
-  onDismiss: (() -> Unit)? = null
+  onDismiss: (() -> Unit)? = null,
+  onOpenGoogleSheets: (() -> Unit)? = null
 ) {
   var ramblerText by rememberSaveable { mutableStateOf("") }
   var showKeyDialog by remember { mutableStateOf(false) }
@@ -2277,6 +2327,26 @@ private fun RamblerInputCard(
             Icon(Icons.Default.ContentPaste, contentDescription = null, tint = TitaniumWhite, modifier = Modifier.size(12.dp))
             Spacer(modifier = Modifier.width(4.dp))
             Text("Paste Clipboard", fontSize = 11.sp, color = TitaniumWhite)
+          }
+        }
+
+        if (onOpenGoogleSheets != null) {
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = Color(0xFF0F9D58).copy(alpha = 0.15f),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF34A853)),
+            modifier = Modifier.clickable {
+              onOpenGoogleSheets()
+            }
+          ) {
+            Row(
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Icon(Icons.Default.TableChart, contentDescription = null, tint = Color(0xFF34A853), modifier = Modifier.size(12.dp))
+              Spacer(modifier = Modifier.width(4.dp))
+              Text("Google Sheets", fontSize = 11.sp, color = Color(0xFF34A853), fontWeight = FontWeight.Bold)
+            }
           }
         }
 

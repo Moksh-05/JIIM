@@ -23,6 +23,12 @@ import com.example.model.ParsedSetLog
 import com.example.model.ParsedWorkoutRant
 import com.example.model.RoutineTemplate
 import com.example.model.WorkoutWithExercises
+import com.example.data.GoogleAuthManager
+import com.example.data.GoogleAuthState
+import com.example.data.GoogleSheetMetadata
+import com.example.data.GoogleSheetWorkoutParser
+import com.example.data.GoogleSheetsService
+import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +41,18 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+
+data class GoogleSheetsSyncUiState(
+  val isLoading: Boolean = false,
+  val statusMessage: String? = null,
+  val errorMessage: String? = null,
+  val metadata: GoogleSheetMetadata? = null,
+  val selectedTabTitle: String? = null,
+  val parsedWorkouts: List<ParsedWorkoutRant> = emptyList(),
+  val importSuccessCount: Int? = null,
+  val isExporting: Boolean = false,
+  val exportSuccessCount: Int? = null
+)
 
 data class ActiveSetLog(
   val setNumber: Int,
@@ -107,6 +125,13 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   private val geminiService = GeminiService { userProfileManager.getGeminiApiKey() }
   private val networkMonitor = NetworkMonitor(application)
   private val appUpdateManager = AppUpdateManager(application)
+
+  val googleAuthManager = GoogleAuthManager(application)
+  val googleSheetsService = GoogleSheetsService(googleAuthManager)
+  val googleAuthState: StateFlow<GoogleAuthState> = googleAuthManager.authState
+
+  private val _googleSheetsUiState = MutableStateFlow(GoogleSheetsSyncUiState())
+  val googleSheetsUiState: StateFlow<GoogleSheetsSyncUiState> = _googleSheetsUiState.asStateFlow()
 
   fun getGeminiApiKey(): String = userProfileManager.getGeminiApiKey()
   fun setGeminiApiKey(key: String) {
@@ -828,10 +853,36 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
   fun saveLoggedWorkout(rant: ParsedWorkoutRant) {
     viewModelScope.launch {
       repository.saveLoggedWorkout(rant)
+      triggerAutoExportIfEnabled(rant)
       _parsedRants.value = emptyList()
       _parsedRant.value = null
       _clarifications.value = emptyList()
       runProgressAnalysis()
+    }
+  }
+
+  private fun triggerAutoExportIfEnabled(rant: ParsedWorkoutRant) {
+    val auth = googleAuthState.value
+    if (auth.autoExportEnabled && !auth.linkedSpreadsheetId.isNullOrBlank()) {
+      val targetTab = auth.linkedTabTitle ?: "Sheet1"
+      val rows = googleSheetsService.formatWorkoutForSheet(
+        workoutName = rant.workoutTitle,
+        dateMillis = rant.workoutDateMillis ?: System.currentTimeMillis(),
+        exercises = rant.exercises,
+        notes = rant.notes,
+        useLbs = _useLbs.value
+      )
+      viewModelScope.launch {
+        try {
+          googleSheetsService.appendWorkoutRows(
+            spreadsheetId = auth.linkedSpreadsheetId,
+            tabTitle = targetTab,
+            rows = rows
+          )
+        } catch (e: Exception) {
+          android.util.Log.e("GymViewModel", "Auto-export to Google Sheets failed", e)
+        }
+      }
     }
   }
 
@@ -844,6 +895,184 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
       _parsedRant.value = null
       _clarifications.value = emptyList()
       runProgressAnalysis()
+    }
+  }
+
+  // -------------------------------------------------------------
+  // GOOGLE SHEETS LIVE SYNC & REST API
+  // -------------------------------------------------------------
+  fun connectGoogleAccount(activityContext: Context) {
+    viewModelScope.launch {
+      googleAuthManager.signInWithGoogle(activityContext)
+    }
+  }
+
+  fun disconnectGoogleAccount() {
+    googleAuthManager.disconnect()
+  }
+
+  fun setManualOAuthToken(token: String) {
+    googleAuthManager.setManualOAuthToken(token)
+  }
+
+  fun setCustomGoogleApiKey(apiKey: String) {
+    googleAuthManager.setCustomApiKey(apiKey)
+  }
+
+  fun fetchGoogleSpreadsheet(urlOrId: String, tabTitle: String? = null) {
+    if (urlOrId.isBlank()) {
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        errorMessage = "Please enter a valid Google Spreadsheet URL or Spreadsheet ID."
+      )
+      return
+    }
+
+    viewModelScope.launch {
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        isLoading = true,
+        errorMessage = null,
+        statusMessage = "Connecting to Google Sheets REST API...",
+        importSuccessCount = null
+      )
+
+      val metaResult = googleSheetsService.fetchSpreadsheetMetadata(urlOrId)
+      metaResult.fold(
+        onSuccess = { meta ->
+          val targetTab = tabTitle ?: meta.sheetTabs.firstOrNull()?.title ?: "Sheet1"
+          _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+            statusMessage = "Fetching rows from '${meta.title}' ($targetTab)...",
+            metadata = meta,
+            selectedTabTitle = targetTab
+          )
+
+          val valuesResult = googleSheetsService.fetchSheetValues(meta.spreadsheetId, targetTab)
+          valuesResult.fold(
+            onSuccess = { rows ->
+              if (rows.isEmpty()) {
+                _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+                  isLoading = false,
+                  statusMessage = "Sheet tab '$targetTab' contains no data rows.",
+                  parsedWorkouts = emptyList()
+                )
+              } else {
+                val parsed = GoogleSheetWorkoutParser.parseSheetRows(rows, defaultUseLbs = useLbs.value)
+                if (parsed.isEmpty()) {
+                  _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+                    isLoading = false,
+                    statusMessage = "Found ${rows.size} rows, but could not detect workout patterns. Ensure columns have exercise names.",
+                    parsedWorkouts = emptyList()
+                  )
+                } else {
+                  _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+                    isLoading = false,
+                    statusMessage = "Successfully parsed ${parsed.size} workout(s) with ${parsed.sumOf { it.exercises.size }} exercises from '$targetTab'!",
+                    parsedWorkouts = parsed
+                  )
+                }
+              }
+            },
+            onFailure = { err ->
+              _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+                isLoading = false,
+                errorMessage = "Failed to fetch rows: ${err.message ?: "Check sheet permissions or token."}"
+              )
+            }
+          )
+        },
+        onFailure = { err ->
+          _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+            isLoading = false,
+            errorMessage = "Failed to open sheet: ${err.message ?: "Verify your spreadsheet ID or ensure 'Anyone with link can view' is enabled."}"
+          )
+        }
+      )
+    }
+  }
+
+  fun importFetchedGoogleSheetWorkouts() {
+    val workouts = _googleSheetsUiState.value.parsedWorkouts
+    if (workouts.isEmpty()) return
+
+    viewModelScope.launch {
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        isLoading = true,
+        statusMessage = "Importing ${workouts.size} workouts into history..."
+      )
+      saveAllLoggedWorkouts(workouts)
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        isLoading = false,
+        statusMessage = "Imported ${workouts.size} workouts into your training history!",
+        importSuccessCount = workouts.size,
+        parsedWorkouts = emptyList()
+      )
+    }
+  }
+
+  fun clearGoogleSheetState() {
+    _googleSheetsUiState.value = GoogleSheetsSyncUiState()
+  }
+
+  fun saveLinkedSpreadsheet(spreadsheetId: String, title: String, tabTitle: String) {
+    googleAuthManager.saveLinkedSpreadsheet(spreadsheetId, title, tabTitle)
+  }
+
+  fun setAutoExportToGoogleSheets(enabled: Boolean) {
+    googleAuthManager.setAutoExport(enabled)
+  }
+
+  fun clearLinkedSpreadsheet() {
+    googleAuthManager.clearLinkedSpreadsheet()
+  }
+
+  fun exportAllWorkoutsToGoogleSheet(
+    targetSpreadsheetId: String? = null,
+    targetTabTitle: String? = null
+  ) {
+    val id = targetSpreadsheetId ?: googleAuthState.value.linkedSpreadsheetId
+    if (id.isNullOrBlank()) {
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        errorMessage = "Please enter or link a Google Spreadsheet URL / ID first."
+      )
+      return
+    }
+
+    val tab = targetTabTitle ?: googleAuthState.value.linkedTabTitle ?: "Sheet1"
+    val workouts = allWorkouts.value
+    if (workouts.isEmpty()) {
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        errorMessage = "No completed workouts in your app history to export."
+      )
+      return
+    }
+
+    viewModelScope.launch {
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        isExporting = true,
+        errorMessage = null,
+        statusMessage = "Exporting ${workouts.size} workouts to '$tab' in Google Sheets..."
+      )
+
+      val allRows = mutableListOf<List<String>>()
+      for (w in workouts) {
+        allRows.addAll(googleSheetsService.formatCompletedWorkoutForSheet(w, useLbs = _useLbs.value))
+      }
+
+      val result = googleSheetsService.appendWorkoutRows(id, tab, allRows)
+      result.fold(
+        onSuccess = { count ->
+          _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+            isExporting = false,
+            statusMessage = "Successfully exported ${workouts.size} workouts ($count rows appended) to '$tab' in Google Sheets!",
+            exportSuccessCount = count
+          )
+        },
+        onFailure = { err ->
+          _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+            isExporting = false,
+            errorMessage = "Export failed: ${err.message ?: "Ensure you have connected your Google Account with edit permissions."}"
+          )
+        }
+      )
     }
   }
 

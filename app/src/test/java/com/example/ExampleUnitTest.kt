@@ -16,7 +16,7 @@ class ExampleUnitTest {
     assertTrue("Bench press should be detected", bench != null)
     assertEquals(3, bench?.sets?.size)
     assertEquals(85.0, bench?.sets?.first()?.weightKg ?: 0.0, 0.1)
-    assertEquals(8, bench?.sets?.first()?.reps ?: 0)
+    assertEquals(8.0, bench?.sets?.first()?.reps ?: 0.0, 0.1)
 
     val latRaises = parsed.exercises.find { it.exerciseName.contains("Lateral", ignoreCase = true) }
     assertTrue("Lateral raises should be detected", latRaises != null)

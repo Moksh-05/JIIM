@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Tune
@@ -132,8 +133,10 @@ fun ProfileScreen(
 
   var showEditProfileDialog by remember { mutableStateOf(false) }
   var showAddExerciseDialog by remember { mutableStateOf(false) }
+  var showGoogleSheetsDialog by remember { mutableStateOf(false) }
   var deleteTarget by remember { mutableStateOf<DeleteTarget?>(null) }
   var statusNotice by remember { mutableStateOf<String?>(null) }
+  val googleAuthState by viewModel.googleAuthState.collectAsState()
 
   var expandWorkoutsList by remember { mutableStateOf(false) }
   var expandWeightsList by remember { mutableStateOf(false) }
@@ -591,6 +594,97 @@ fun ProfileScreen(
                 }
               }
             }
+          }
+        }
+      }
+
+      // -------------------------------------------------------------
+      // GOOGLE SHEETS LIVE SYNC & REST API IMPORT
+      // -------------------------------------------------------------
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(
+          text = "GOOGLE SHEETS LIVE SYNC",
+          fontSize = 12.sp,
+          fontWeight = FontWeight.Bold,
+          color = TitaniumSilver,
+          letterSpacing = 1.2.sp
+        )
+        Surface(
+          shape = RoundedCornerShape(6.dp),
+          color = Color(0xFF0F9D58).copy(alpha = 0.2f),
+          border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF34A853))
+        ) {
+          Text(
+            text = "Sheets API v4",
+            color = Color(0xFF34A853),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+          )
+        }
+      }
+
+      Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = CardDark,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF34A853).copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
+      ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Box(
+              modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF0F9D58).copy(alpha = 0.2f)),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(
+                Icons.Default.TableChart,
+                contentDescription = null,
+                tint = Color(0xFF34A853),
+                modifier = Modifier.size(22.dp)
+              )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = "Google Sheets & Account Sync",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = TitaniumWhite
+              )
+              Text(
+                text = if (googleAuthState.isConnected) "Connected as ${googleAuthState.email ?: "Google Account"}" else "Fetch workout logs directly via Google Sheets REST API",
+                fontSize = 11.sp,
+                color = TextSecondary
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(14.dp))
+
+          Button(
+            onClick = { showGoogleSheetsDialog = true },
+            colors = ButtonDefaults.buttonColors(
+              containerColor = Color(0xFF0F9D58),
+              contentColor = TitaniumWhite
+            ),
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("open_google_sheets_sync_button")
+          ) {
+            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Sync & Import Google Sheets", fontWeight = FontWeight.Bold, fontSize = 12.sp)
           }
         }
       }
@@ -1894,6 +1988,16 @@ fun ProfileScreen(
         ) {
           Text("Cancel", color = TitaniumSilver)
         }
+      }
+    )
+  }
+
+  if (showGoogleSheetsDialog) {
+    com.example.ui.components.GoogleSheetsImportDialog(
+      viewModel = viewModel,
+      onDismiss = { showGoogleSheetsDialog = false },
+      onImportCompleted = {
+        statusNotice = "Google Sheets workouts successfully imported into your history!"
       }
     )
   }
