@@ -33,12 +33,15 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -109,6 +112,8 @@ fun GoogleSheetsImportDialog(
   var manualTokenInput by remember { mutableStateOf(authState.accessToken ?: "") }
   var customApiKeyInput by remember { mutableStateOf(authState.customApiKey ?: "") }
   var expandedPreviewIndex by remember { mutableStateOf<Int?>(null) }
+  var pastedDataInput by remember { mutableStateOf("") }
+  var isPasteModeExpanded by remember { mutableStateOf(false) }
 
   Dialog(
     onDismissRequest = {
@@ -598,6 +603,32 @@ fun GoogleSheetsImportDialog(
                   }
                 )
 
+                val isLikelyNameOnly = remember(spreadsheetInput) {
+                  val clean = spreadsheetInput.trim()
+                  clean.isNotBlank() && !clean.contains("/") && !clean.contains(".") && (clean.length < 18 || clean.contains(" "))
+                }
+
+                if (isLikelyNameOnly) {
+                  Spacer(modifier = Modifier.height(8.dp))
+                  Row(
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .clip(RoundedCornerShape(8.dp))
+                      .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
+                      .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                  ) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                      text = "\"$spreadsheetInput\" looks like a sheet name. Please copy the full link from Google Sheets (e.g. https://docs.google.com/spreadsheets/d/...) or use Option 2 below to paste your cells directly.",
+                      fontSize = 11.sp,
+                      color = Color(0xFFFDE68A),
+                      lineHeight = 15.sp
+                    )
+                  }
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
@@ -642,6 +673,119 @@ fun GoogleSheetsImportDialog(
             }
           }
 
+          // 2B. OPTION 2: DIRECT PASTE (NO LINK OR SHARING NEEDED)
+          item {
+            Surface(
+              shape = RoundedCornerShape(14.dp),
+              color = CardElevated,
+              border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isPasteModeExpanded = !isPasteModeExpanded },
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                      Icons.Default.ContentPaste,
+                      contentDescription = null,
+                      tint = Color(0xFF4285F4),
+                      modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                      text = "Option 2: Direct Paste (No Link Needed)",
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 13.sp,
+                      color = TitaniumWhite
+                    )
+                  }
+                  Icon(
+                    if (isPasteModeExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = TitaniumSilver,
+                    modifier = Modifier.size(20.dp)
+                  )
+                }
+
+                if (isPasteModeExpanded) {
+                  Spacer(modifier = Modifier.height(10.dp))
+                  Text(
+                    text = "If your 'Gym' sheet is private or you prefer not to change sharing settings, simply copy your rows/columns in Google Sheets or Excel and paste them here:",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    lineHeight = 15.sp
+                  )
+                  Spacer(modifier = Modifier.height(8.dp))
+                  OutlinedTextField(
+                    value = pastedDataInput,
+                    onValueChange = { pastedDataInput = it },
+                    placeholder = {
+                      Text(
+                        "Date\tExercise\tWeight\tReps\n2026-03-01\tBench Press\t100\t8",
+                        fontSize = 11.sp,
+                        color = TextTertiary
+                      )
+                    },
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .heightIn(min = 80.dp, max = 150.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                      focusedTextColor = TitaniumWhite,
+                      unfocusedTextColor = TitaniumSilver,
+                      focusedBorderColor = Color(0xFF4285F4),
+                      unfocusedBorderColor = BorderSubtle,
+                      focusedContainerColor = SurfaceDark,
+                      unfocusedContainerColor = SurfaceDark
+                    ),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp)
+                  )
+                  Spacer(modifier = Modifier.height(10.dp))
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                  ) {
+                    OutlinedButton(
+                      onClick = {
+                        val clip = clipboardManager.getText()?.text
+                        if (!clip.isNullOrBlank()) {
+                          pastedDataInput = clip
+                        }
+                      },
+                      shape = RoundedCornerShape(8.dp),
+                      modifier = Modifier.weight(1f)
+                    ) {
+                      Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
+                      Spacer(modifier = Modifier.width(4.dp))
+                      Text("Paste Clipboard", fontSize = 11.sp)
+                    }
+
+                    Button(
+                      onClick = {
+                        viewModel.parseAndPreviewPastedSheetData(pastedDataInput)
+                      },
+                      enabled = pastedDataInput.isNotBlank(),
+                      colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF4285F4),
+                        contentColor = TitaniumWhite
+                      ),
+                      shape = RoundedCornerShape(8.dp),
+                      modifier = Modifier.weight(1f)
+                    ) {
+                      Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                      Spacer(modifier = Modifier.width(4.dp))
+                      Text("Parse & Preview", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                  }
+                }
+              }
+            }
+          }
+
           // STATUS OR ERROR NOTICE
           if (syncState.statusMessage != null || syncState.errorMessage != null) {
             item {
@@ -654,23 +798,37 @@ fun GoogleSheetsImportDialog(
                 ),
                 modifier = Modifier.fillMaxWidth()
               ) {
-                Row(
-                  modifier = Modifier.padding(12.dp),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Icon(
-                    imageVector = if (syncState.errorMessage != null) Icons.Default.Close else Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = if (syncState.errorMessage != null) Color(0xFFEF4444) else Color(0xFF34A853),
-                    modifier = Modifier.size(18.dp)
-                  )
-                  Spacer(modifier = Modifier.width(10.dp))
-                  Text(
-                    text = syncState.errorMessage ?: syncState.statusMessage ?: "",
-                    fontSize = 11.sp,
-                    color = if (syncState.errorMessage != null) Color(0xFFFCA5A5) else TitaniumWhite,
-                    lineHeight = 15.sp
-                  )
+                Column(modifier = Modifier.padding(12.dp)) {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                      imageVector = if (syncState.errorMessage != null) Icons.Default.Close else Icons.Default.CheckCircle,
+                      contentDescription = null,
+                      tint = if (syncState.errorMessage != null) Color(0xFFEF4444) else Color(0xFF34A853),
+                      modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                      text = syncState.errorMessage ?: syncState.statusMessage ?: "",
+                      fontSize = 11.sp,
+                      color = if (syncState.errorMessage != null) Color(0xFFFCA5A5) else TitaniumWhite,
+                      lineHeight = 15.sp,
+                      fontWeight = if (syncState.errorMessage != null) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                  }
+
+                  if (syncState.errorMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.End
+                    ) {
+                      TextButton(
+                        onClick = { isPasteModeExpanded = true }
+                      ) {
+                        Text("📋 Try Direct Paste Instead", fontSize = 11.sp, color = Color(0xFF60A5FA))
+                      }
+                    }
+                  }
                 }
               }
             }

@@ -284,4 +284,66 @@ object GoogleSheetWorkoutParser {
     }
     return System.currentTimeMillis()
   }
+
+  fun parseRawTextToRows(text: String): List<List<String>> {
+    val cleanText = text.trim()
+    if (cleanText.isBlank()) return emptyList()
+
+    // If text contains tabs, it's copied directly from Google Sheets / Excel cells
+    if (cleanText.contains("\t")) {
+      return cleanText.lines()
+        .filter { it.isNotBlank() }
+        .map { line ->
+          line.split("\t").map { it.trim().trim('"', '\'') }
+        }
+    }
+
+    // Otherwise, parse as CSV
+    return parseCsvString(cleanText)
+  }
+
+  fun parseCsvString(csv: String): List<List<String>> {
+    val rows = mutableListOf<List<String>>()
+    val currentRow = mutableListOf<String>()
+    val currentCell = StringBuilder()
+    var inQuotes = false
+    var i = 0
+
+    while (i < csv.length) {
+      val ch = csv[i]
+      if (ch == '"') {
+        if (inQuotes && i + 1 < csv.length && csv[i + 1] == '"') {
+          currentCell.append('"')
+          i++
+        } else {
+          inQuotes = !inQuotes
+        }
+      } else if (ch == ',' && !inQuotes) {
+        currentRow.add(currentCell.toString().trim())
+        currentCell.clear()
+      } else if ((ch == '\n' || ch == '\r') && !inQuotes) {
+        if (ch == '\r' && i + 1 < csv.length && csv[i + 1] == '\n') {
+          i++
+        }
+        currentRow.add(currentCell.toString().trim())
+        currentCell.clear()
+        if (currentRow.any { it.isNotBlank() }) {
+          rows.add(currentRow.toList())
+        }
+        currentRow.clear()
+      } else {
+        currentCell.append(ch)
+      }
+      i++
+    }
+
+    if (currentCell.isNotEmpty() || currentRow.isNotEmpty()) {
+      currentRow.add(currentCell.toString().trim())
+      if (currentRow.any { it.isNotBlank() }) {
+        rows.add(currentRow.toList())
+      }
+    }
+
+    return rows
+  }
 }

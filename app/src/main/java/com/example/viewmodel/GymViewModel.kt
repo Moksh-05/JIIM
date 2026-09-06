@@ -26,6 +26,7 @@ import com.example.model.WorkoutWithExercises
 import com.example.data.GoogleAuthManager
 import com.example.data.GoogleAuthState
 import com.example.data.GoogleSheetMetadata
+import com.example.data.GoogleSheetTab
 import com.example.data.GoogleSheetWorkoutParser
 import com.example.data.GoogleSheetsService
 import android.content.Context
@@ -982,9 +983,45 @@ class GymViewModel(application: Application) : AndroidViewModel(application) {
         onFailure = { err ->
           _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
             isLoading = false,
-            errorMessage = "Failed to open sheet: ${err.message ?: "Verify your spreadsheet ID or ensure 'Anyone with link can view' is enabled."}"
+            errorMessage = err.message ?: "Failed to open sheet. Please verify your link and ensure 'Anyone with the link can view' is enabled in Google Sheets."
           )
         }
+      )
+    }
+  }
+
+  fun parseAndPreviewPastedSheetData(rawText: String) {
+    val clean = rawText.trim()
+    if (clean.isBlank()) {
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        errorMessage = "Clipboard or input is empty. Please copy rows from your spreadsheet first."
+      )
+      return
+    }
+
+    val rows = GoogleSheetWorkoutParser.parseRawTextToRows(clean)
+    if (rows.isEmpty()) {
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        errorMessage = "Could not parse any rows from the pasted text."
+      )
+      return
+    }
+
+    val parsed = GoogleSheetWorkoutParser.parseSheetRows(rows, defaultUseLbs = useLbs.value)
+    if (parsed.isEmpty()) {
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        errorMessage = "Found ${rows.size} rows, but could not detect workout patterns (exercises, sets, weights, reps). Please ensure the copied table has column headers."
+      )
+    } else {
+      _googleSheetsUiState.value = _googleSheetsUiState.value.copy(
+        statusMessage = "Successfully parsed ${parsed.size} workout(s) with ${parsed.sumOf { it.exercises.size }} exercises from pasted table!",
+        parsedWorkouts = parsed,
+        errorMessage = null,
+        metadata = GoogleSheetMetadata(
+          spreadsheetId = "pasted_table",
+          title = "Pasted Sheet Table",
+          sheetTabs = listOf(GoogleSheetTab(0, "Pasted Data", rows.size, rows.firstOrNull()?.size ?: 0))
+        )
       )
     }
   }
